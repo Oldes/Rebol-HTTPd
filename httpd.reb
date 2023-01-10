@@ -23,7 +23,7 @@ Rebol [
 		* add support for other methods - PUT, DELETE, TRACE, CONNECT, OPTIONS?
 		* better error handling
 	}
-	Usage: {Check %tests/test-httpd.r3 script how to start a simple server}
+	Usage: {Check %server-test.r3 script how to start a simple server}
 	History: [
 		04-Nov-2009 "Andreas Bolka" {A Tiny HTTP Server
 		https://github.com/earl/rebol3/blob/master/scripts/shttpd.r}
@@ -196,7 +196,7 @@ to-CLF-idate: func [
 ;------------------------------------------------------------------------
 sys/make-scheme [
 	Title: "HTTP Server"
-	Name: 'httpd
+	Name:  'httpd
 
 	Actor: [
 		Open: func [port [port!] /local spec][
@@ -218,7 +218,7 @@ sys/make-scheme [
 					root: system/options/home
 					index: [%index.html %index.htm]
 					keep-alive: true
-					server-name: "Rebol3-HTTPD"
+					server-name: "Rebol3-HTTPd"
 				]
 			]
 			port/state: port/extra/subport/extra/clients

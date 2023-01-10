@@ -1,0 +1,25 @@
+name: 'Rebol-HTTPd CI'
+on:
+  # Triggers the workflow on push or pull request events but only for the master branch
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: Install Rebol for extension test
+      uses: oldes/install-rebol@v3.10.2
+      with:
+        product: Bulk
+
+    - name: Test HTTPd server
+      run:  ./rebol3 client-test.r3
