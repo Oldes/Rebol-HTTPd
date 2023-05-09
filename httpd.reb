@@ -934,7 +934,7 @@ http-server: function [
 	if config [
 		if object? spec [ spec: body-of spec ]
 		spec/root: case [
-			file? spec/root          [to-real-file dirize clean-path spec/root]
+			file? spec/root          [dirize to-real-file clean-path spec/root]
 			spec/root = 'current-dir [what-dir]
 			'else [none]
 		]
