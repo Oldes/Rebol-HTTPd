@@ -933,9 +933,11 @@ http-server: function [
 	server: open join httpd://: port
 	if config [
 		if object? spec [ spec: body-of spec ]
-		spec/root: case [
-			file? spec/root          [attempt [dirize to-real-file clean-path spec/root]]
-			spec/root = 'current-dir [what-dir]
+		if root: select spec 'root [
+			spec/root: case [
+				file? :root [attempt [dirize to-real-file clean-path root]]
+				'current-dir = :root [what-dir]
+			]
 		]
 		append server/extra/config spec
 	]
