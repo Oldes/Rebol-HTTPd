@@ -33,4 +33,17 @@ Based on '[A Tiny HTTP Server](https://github.com/earl/rebol3/blob/master/script
 
 ## Usage:
 
-Check [%server-test.r3](https://github.com/Oldes/Rebol-HTTPd/blob/master/server-test.r3) script how to start a simple server}
+Minimal server setup:
+```rebol
+http-server/actor 8888 [
+    ;- Server's actor functions                                                                  
+    On-Header: func [ctx][
+        ;; Just respond with data we recieved... 
+        ctx/out/status: 200
+        ctx/out/header/Content-Type: "text/plain; charset=UTF-8"
+        ctx/out/content: mold ctx/inp
+    ]
+]
+```
+
+For more complete server setup check [%server-test.r3](https://github.com/Oldes/Rebol-HTTPd/blob/master/server-test.r3) script.

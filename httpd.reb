@@ -2,8 +2,8 @@ Rebol [
 	Title:  "HTTPD Scheme"
 	Type:    module
 	Name:    httpd
-	Date:    09-Jan-2023
-	Version: 0.7.0
+	Date:    09-May-2023
+	Version: 0.8.0
 	Author: ["Andreas Bolka" "Christopher Ross-Gill" "Oldes"]
 	Exports: [http-server decode-target to-CLF-idate]
 	Home:    https://github.com/Oldes/Rebol-HTTPd
@@ -34,6 +34,7 @@ Rebol [
 		02-Jul-2020 "Oldes" {Added possibility to stop the server from a client and return data to it (useful for OAuth2)}
 		06-Dec-2022 "Oldes" {Added minimal support for WebSocket connections}
 		09-Jan-2023 "Oldes" {New home: https://github.com/Oldes/Rebol-HTTPd}
+		09-May-2023 "Oldes" {Root-less configuration possibility (default)}
 	]
 	Needs: [3.10.1 mime-types]
 ]
@@ -215,7 +216,7 @@ sys/make-scheme [
 				]
 				subport/extra/config:
 				config: make object! [
-					root: system/options/home
+					root:  none
 					index: [%index.html %index.htm]
 					keep-alive: true
 					server-name: "Rebol3-HTTPd"
@@ -239,7 +240,7 @@ sys/make-scheme [
 			/local target path info index modified If-Modified-Since
 		][
 			target: ctx/inp/target
-			target/file: path: join dirize ctx/config/root next clean-path/only target/file
+			target/file: path: join ctx/config/root next clean-path/only target/file
 			ctx/out/header/Date: to-idate/gmt now
 			ctx/out/status: 200
 			either exists? path [
@@ -931,16 +932,17 @@ http-server: function [
 	server: open join httpd://: port
 	if config [
 		if object? spec [ spec: body-of spec ]
-		case [
-			file? spec/root [spec/root: dirize clean-path spec/root]
-			none? spec/root [spec/root: what-dir]
+		spec/root: case [
+			file? spec/root          [to-real-file dirize clean-path spec/root]
+			spec/root = 'current-dir [what-dir]
+			'else [none]
 		]
 		append server/extra/config spec
 	]
-	
-	unless system/options/quiet [
-		? server/extra/config
-	]
+
+	sys/log/info 'HTTPD ["Root directory: " as-green server/extra/config/root]
+
+	;unless system/options/quiet [? server/extra/config]
 
 	if actor [
 		append server/actor either block? actions [
