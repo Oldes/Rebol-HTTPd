@@ -33,7 +33,12 @@ Based on '[A Tiny HTTP Server](https://github.com/earl/rebol3/blob/master/script
 
 ## Usage:
 
-Minimal server setup:
+1. Minimal server setup for serving content of the current directory:
+```rebol
+http-server/config 8888 [root: current-dir]
+```
+
+2. Minimal server setup for in-memory generated content (root-less)
 ```rebol
 http-server/actor 8888 [
     ;- Server's actor functions                                                                  
@@ -46,4 +51,4 @@ http-server/actor 8888 [
 ]
 ```
 
-For more complete server setup check [%server-test.r3](https://github.com/Oldes/Rebol-HTTPd/blob/master/server-test.r3) script.
+3. For more complete server setup check [%server-test.r3](https://github.com/Oldes/Rebol-HTTPd/blob/master/server-test.r3) script.
