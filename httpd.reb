@@ -3,7 +3,7 @@ Rebol [
 	Type:    module
 	Name:    httpd
 	Date:    09-May-2023
-	Version: 0.8.0
+	Version: 0.8.1
 	Author: ["Andreas Bolka" "Christopher Ross-Gill" "Oldes"]
 	Exports: [http-server decode-target to-CLF-idate]
 	Home:    https://github.com/Oldes/Rebol-HTTPd
@@ -219,6 +219,7 @@ sys/make-scheme [
 					root:  none
 					index: [%index.html %index.htm]
 					keep-alive: true
+					list-dir?:  true
 					server-name: "Rebol3-HTTPd"
 				]
 			]
