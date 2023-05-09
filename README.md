@@ -51,4 +51,51 @@ http-server/actor 8888 [
 ]
 ```
 
-3. For more complete server setup check [%server-test.r3](https://github.com/Oldes/Rebol-HTTPd/blob/master/server-test.r3) script.
+3. For more complete server setup check [server-test.r3](https://github.com/Oldes/Rebol-HTTPd/blob/master/server-test.r3) script.
+
+## Setup a service on Linux
+
+The best way to start a Linux service that persists through a boot is to create a systemd service. Here are the steps to create a systemd service:
+
+1. Create a new service file in the `/etc/systemd/system` directory using a text editor. For example, create a file named `mywebserver.service`.
+
+2. Inside the service file, define the service by providing a `[Unit]` section with a `Description` and `After` directive, and a `[Service]` section with the `ExecStart` directive. For example:
+```makefile
+[Unit]
+Description=My Rebol Web Server
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/rebol3 -qs /path/to/server/script.r3
+Restart=always
+User=rebol
+Group=www-data
+
+[Install]
+WantedBy=multi-user.target
+```
+
+3. Save the service file and reload the systemd daemon to pick up the new service:
+```
+sudo systemctl daemon-reload
+```
+
+4. Enable the service to start at boot:
+```
+sudo systemctl enable mywebserver.service
+```
+
+5. Start the service:
+```
+sudo systemctl start mywebserver.service
+```
+
+The service should now be running and will start automatically on boot. You can use the `systemctl` command to manage the service, such as to stop or restart it:
+```
+sudo systemctl stop mywebserver.service
+sudo systemctl restart mywebserver.service
+```
+Or to get a status of the service:
+```
+sudo systemctl status mywebserver.service
+```
