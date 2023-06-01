@@ -50,10 +50,10 @@ foreach test [
 	[ assert-http      200 http://localhost:8081/humans.txt  ]
 	[ assert-http/post 200 http://localhost:8081 {msg=hello} ]
 	[ assert-http/post 200 http://localhost:8081 [post [user-agent: "UA"] "hello"] ]
-	[ assert-http/post 200 http://localhost:8081/api/v2/do #(token: "SOME_SECRET" code: "[1 + 1]") ]
-	[ assert-http/post 401 http://localhost:8081/api/v2/do #(token: "ELSE_SECRET" code: "[1 + 1]") ]
 	[ assert-http/post 200 http://localhost:8081/api/v2/do {token=SOME_SECRET&code=1%20%2B%202} ]
-
+;These tests needs newer Rebol version then is available in Github actions now (automatically converts a map! to json)
+;	[ assert-http/post 200 http://localhost:8081/api/v2/do #(token: "SOME_SECRET" code: "[1 + 1]") ]
+;	[ assert-http/post 401 http://localhost:8081/api/v2/do #(token: "ELSE_SECRET" code: "[1 + 1]") ]
 ][
 	print-horizontal-line
 	print [as-yellow "Assert:" mold/flat test]
