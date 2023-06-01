@@ -122,7 +122,33 @@ http-server/config/actor 8081 [
 			]
 		]
 	]
-	On-Post-Received: func [ctx [object!]][
+	On-Post-Received: func [ctx [object!] /local data][
+		if ctx/inp/target/file = %/api/v2/do [
+			;- A primitive API example                                                    
+			try/except [
+				;?? ctx/inp
+				data: ctx/inp/content
+				unless map? data [data: to map! ctx/inp/content/1] ;;= url-encoded input
+				;; using plain secret in this example,
+				;; but it should be replaced with something better in the real life
+				if data/token <> "SOME_SECRET" [
+					ctx/out/status: 401 ;= Unauthorized
+					exit
+				]
+				;; reusing the input for an output
+				;; without the token...
+				remove/key data 'token
+				;; but with result of the input expression...
+				;@@ NOTE that there is no security setting, so the code may be dangerous!
+				data/result: mold/all try load data/code
+				ctx/out/header/Content-Type: "application/json"
+				ctx/out/content: to-json data
+			][
+				ctx/out/status: 400 ;= Bad request
+			]
+			exit
+		]
+		;; else just return what we received...
 		ctx/out/content: ajoin [
 			"<br/>Request header:<pre>" mold ctx/inp/header </pre>
 			"Received <code>" ctx/inp/header/Content-Type/1 
