@@ -202,7 +202,7 @@ sys/make-scheme [
 	Actor: [
 		Open: func [port [port!] /local spec][
 			spec: port/spec
-			sys/log/info 'HTTPD ["Opening server at port:^[[22m" spec/port]
+			log-more ["Opening server at port:^[[22m" spec/port]
 			port/extra: make object! [
 				subport: open compose [
 					scheme: 'tcp
@@ -215,11 +215,11 @@ sys/make-scheme [
 					clients: make block! 16
 				]
 				subport/extra/config:
-				config: make object! [
-					root:  none
-					index: [%index.html %index.htm]
-					keep-alive: true
-					list-dir?:  true
+				config: make map! [
+					root:       #[none]
+					index:       [%index.html %index.htm]
+					keep-alive: #[true]
+					list-dir?:  #[true]
 					server-name: "Rebol3-HTTPd"
 				]
 			]
@@ -229,7 +229,7 @@ sys/make-scheme [
 		]
 
 		Close: func [port [port!]][
-			sys/log/info 'HTTPD ["Closing server at port:^[[22m" port/spec/port]
+			log-more ["Closing server at port:^[[22m" port/spec/port]
 			close port/extra/subport
 		]
 
@@ -249,7 +249,7 @@ sys/make-scheme [
 					foreach file ctx/config/index [
 						if exists? index: path/:file [
 							path: index
-							sys/log/debug 'HTTPD ["using index file:" index]
+							log-debug ["using index file:" index]
 							break
 						]
 					]
@@ -365,7 +365,7 @@ sys/make-scheme [
 			/local path dir out size date files dirs
 		][
 			unless ctx/config/list-dir? [
-				sys/log/more 'HTTPD ["Listing dir not allowed:^[[1m" mold target/file]
+				log-more ["Listing dir not allowed:^[[1m" mold target/file]
 				ctx/out/status: 404 ; using not-found response!
 				return false
 			]
@@ -413,7 +413,7 @@ sys/make-scheme [
 		]
 
 		On-Not-Found: func[ctx [object!] target [object!]][
-			sys/log/more 'HTTPD ["Target not found:^[[1m" mold target/file]
+			log-more ["Target not found:^[[1m" mold target/file]
 			ctx/out/status: 404
 		]
 
@@ -496,7 +496,7 @@ sys/make-scheme [
 	Respond: function [port [port!]][
 		ctx: port/extra
 		out: ctx/out
-		sys/log/info 'HTTPD ["Respond:^[[22m" out/status status-codes/(out/status) length? out/content]
+		log-more ["Respond:^[[22m" out/status status-codes/(out/status) length? out/content]
 		; send the response header
 		buffer: make binary! 1024
 		append buffer ajoin ["HTTP/" ctx/inp/version #" " out/status #" " status-codes/(out/status) CRLF]
@@ -557,14 +557,13 @@ sys/make-scheme [
 		try/except [
 			write port buffer
 		][
-			;@@TODO: handle it without `print`; using on-error?
-			print "** Write failed!"
+			log-error "Write failed!"
 			;probe copy/part buffer 100
 			Awake-Client make event! [type: 'close port: port ]
 		]
 	]
 
-	Do-log: function [ctx][
+	Write-log: function [ctx][
 		try/except [
 			msg: ajoin [
 				ctx/remote-ip
@@ -577,18 +576,18 @@ sys/make-scheme [
 				#"^/"
 			]
 			prin msg
-			if file? file: select ctx/config 'log-access [
+			if file? file: ctx/config/log-access [
 				write/append file msg
 			]
 			if all [
 				ctx/out/status >= 400
-				file? file: select ctx/config 'log-errors
+				file? file: ctx/config/log-errors
 			][
 				write/append file msg
 			]
 		][
-			print "** Failed to write a log"
-			print system/state/last-error
+			log-error "Failed to write a log"
+			log-error system/state/last-error
 		]
 	]
 
@@ -606,13 +605,13 @@ sys/make-scheme [
 			inp: ctx/inp
 			out: ctx/out
 
-			sys/log/more 'HTTPD ["Awake:^[[1m" ctx/remote "^[[22m" event/type]
+			log-more ["Awake:^[[1m" ctx/remote "^[[22m" event/type]
 
 			ctx/timeout: now + 0:0:15
 
 			switch event/type [
 				READ [
-					sys/log/more 'HTTPD ["bytes:^[[1m" length? port/data]
+					log-more ["bytes:^[[1m" length? port/data]
 					either header-end: find/tail port/data CRLF2BIN [
 						try/except [
 							if none? ctx/state [
@@ -632,7 +631,7 @@ sys/make-scheme [
 									]
 									content: header-end
 								]
-								sys/log/info 'HTTPD ["Request header:^[[22m" ctx/inp/method mold ctx/inp/header]
+								log-more ["Request header:^[[22m" ctx/inp/method mold ctx/inp/header]
 								; on-header actor may be used for rewrite rules (redirection)
 								actor/on-header ctx
 								if ctx/out/status [
@@ -643,11 +642,11 @@ sys/make-scheme [
 							]
 							actor/on-read port/extra
 						][
-							print system/state/last-error
+							log-error system/state/last-error
 							ctx/state: 'error
 							ctx/out/status: 500 ; Internal Server Error
 						]
-						sys/log/debug 'HTTPD ["State:^[[1m" ctx/state "^[[22mstatus:^[[1m" out/status]
+						log-debug ["State:^[[1m" ctx/state "^[[22mstatus:^[[1m" out/status]
 						either ctx/state = 'read-data [
 							; posted data not fully read
 							read port
@@ -675,7 +674,7 @@ sys/make-scheme [
 									try/except [
 										write port buffer
 									][
-										print "** Write failed (2)!"
+										log-error  "Write failed (2)!"
 										;probe buffer
 										End-Client port
 									]
@@ -696,7 +695,7 @@ sys/make-scheme [
 					port
 				]
 				CLOSE [
-					sys/log/info 'HTTPD ["Closing:^[[22m" ctx/remote]
+					log-more ["Closing:^[[22m" ctx/remote]
 					if pos: find ctx/parent/extra/clients port [ remove pos ]
 					close port
 				]
@@ -705,7 +704,7 @@ sys/make-scheme [
 	]
 
 	Awake-Server: func [event [event!] /local ctx client config] [
-		sys/log/debug 'HTTPD ["Awake (server):^[[22m" event/type]
+		log-debug ["Awake (server):^[[22m" event/type]
 		switch event/type [
 			ACCEPT [ New-Client event/port ]
 			CLOSE  [
@@ -722,7 +721,7 @@ sys/make-scheme [
 		port: event/port
 		ctx: port/extra
 
-		sys/log/more 'HTTPD ["Awake Websocket:^[[1m" ctx/remote "^[[22m" event/type]
+		log-more ["Awake Websocket:^[[1m" ctx/remote "^[[22m" event/type]
 
 		ctx/timeout: now + 0:0:30
 
@@ -730,7 +729,7 @@ sys/make-scheme [
 			READ [
 				ready?: false
 				data: head port/data
-				sys/log/more 'HTTPD ["bytes:^[[1m" length? data]
+				log-more ["bytes:^[[1m" length? data]
 				try/except [
 					while [2 < length? data][
 						final?: data/1 & 128 = 128
@@ -764,14 +763,14 @@ sys/make-scheme [
 						ready?: true
 						ctx/inp/content: truncate/part request-data len
 						if opcode = 8 [
-							sys/log/more 'HTTPD "WS Connection Close Frame!"
+							log-more "WS Connection Close Frame!"
 							code: 0
 							if all [
 								2 <= len
 								2 <= length? request-data
 							][
 								code: to integer! take/part request-data 2
-								sys/log/more 'HTTPD ["WS Close reason:" as-red code]
+								log-more ["WS Close reason:" as-red code]
 							]
 							actor/On-Close-Websocket ctx code
 							event/type: 'CLOSE
@@ -781,7 +780,7 @@ sys/make-scheme [
 						actor/On-Read-Websocket ctx final? opcode
 					]
 				][
-					print system/state/last-error
+					log-error system/state/last-error
 				]
 				either ready? [
 					;; there was complete input...
@@ -811,7 +810,7 @@ sys/make-scheme [
 				read port
 			]
 			CLOSE [
-				sys/log/info 'HTTPD ["Closing:^[[22m" ctx/remote]
+				log-more ["Closing:^[[22m" ctx/remote]
 				if pos: find ctx/parent/extra/clients port [ remove pos ]
 				close port
 			]
@@ -824,7 +823,7 @@ sys/make-scheme [
 		info: query client
 		unless Actor/On-Accept info [
 			; connection not allowed
-			sys/log/info 'HTTPD ["Client not accepted:^[[22m" info/remote-ip]
+			log-more ["Client not accepted:^[[22m" info/remote-ip]
 			close client
 			return false
 		]
@@ -857,16 +856,16 @@ sys/make-scheme [
 		client/extra/config: port/extra/config
 		append port/extra/clients client
 
-		sys/log/info 'HTTPD ["New client:^[[1;31m" client/extra/remote]
+		log-more ["New client:^[[1;31m" client/extra/remote]
 		try/except [read client][
-			print ["** Failed to read new client:" client/extra/remote]
-			print system/state/last-error
+			log-error ["Failed to read new client:" client/extra/remote]
+			log-error system/state/last-error
 		]
 	]
 
 	End-Client: function [port [port!]][
 		ctx: port/extra
-		Do-log ctx
+		Write-log ctx
 		clients: ctx/parent/extra/clients
 		keep-alive: ctx/config/keep-alive
 		
@@ -877,7 +876,7 @@ sys/make-scheme [
 			"close" <> select port/extra/inp/Header 'Connection ; client don't want or cannot handle persistent connection
 		][
 			ctx/requests: ctx/requests + 1
-			sys/log/info 'HTTPD ["Keep-alive:^[[22m" ctx/remote "requests:" ctx/requests]
+			log-more ["Keep-alive:^[[22m" ctx/remote "requests:" ctx/requests]
 			; reset client state
 			foreach v ctx/inp [ctx/inp/:v: none]
 			foreach v ctx/out [ctx/out/:v: none]
@@ -891,9 +890,9 @@ sys/make-scheme [
 			Awake-Client make event! [type: 'CLOSE port: port]
 			;try [remove find clients port]
 		]
-		sys/log/debug 'HTTPD ["Ports open:" length? clients]
+		log-debug ["Ports open:" length? clients]
 		if all [ctx/done? zero? length? clients][
-			sys/log/info 'HTTPD "Server's job done, closing initiated"
+			log-more "Server's job done, closing initiated"
 			ctx/parent/data: ctx/done?
 			Awake-Server make event! [type: 'CLOSE port: ctx/parent]
 		]
@@ -904,10 +903,10 @@ sys/make-scheme [
 		port [port!] /local tm tmc
 	][
 		tm: now
-		;sys/log/debug 'HTTPD ["Check-Clients:" length? port/state #"-" now]
+		;log-debug ["Check-Clients:" length? port/state #"-" now]
 		if block? port/state [
 			foreach client reverse copy port/state [
-				;sys/log/debug 'HTTPD ["Checking:" client/extra/remote client/extra/timeout]
+				;log-debug ["Checking:" client/extra/remote client/extra/timeout]
 				try [
 					if all [
 						date? tmc: client/extra/timeout
@@ -919,6 +918,19 @@ sys/make-scheme [
 			]
 		]
 	]
+	;=====================================================================
+	log-error: log-info: log-more: log-debug: none
+	set-verbose: func[verbose [integer!]][
+		log-error: log-info: log-more: log-debug: none
+		case/all [
+			verbose >= 0 [log-error: func[msg][sys/log/error 'HTTPD :msg]]
+			verbose >= 1 [log-info:  func[msg][sys/log/info  'HTTPD :msg]]
+			verbose >= 2 [log-more:  func[msg][sys/log/more  'HTTPD :msg]]
+			verbose >= 3 [log-debug: func[msg][sys/log/debug 'HTTPD :msg]]
+		]
+		system/options/log/httpd: verbose
+	]
+	set-verbose 1
 ]
 
 http-server: function [
@@ -942,7 +954,7 @@ http-server: function [
 		append server/extra/config spec
 	]
 
-	sys/log/info 'HTTPD ["Root directory: " as-green server/extra/config/root]
+	sys/log/info 'HTTPD ["Listening on port:" port "with root directory: " as-green server/extra/config/root]
 
 	;unless system/options/quiet [? server/extra/config]
 
