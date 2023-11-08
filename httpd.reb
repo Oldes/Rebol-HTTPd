@@ -2,8 +2,8 @@ Rebol [
 	Title:  "HTTPD Scheme"
 	Type:    module
 	Name:    httpd
-	Date:    09-May-2023
-	Version: 0.8.1
+	Date:    3-Oct-2023
+	Version: 0.8.2
 	Author: ["Andreas Bolka" "Christopher Ross-Gill" "Oldes"]
 	Exports: [http-server decode-target to-CLF-idate]
 	Home:    https://github.com/Oldes/Rebol-HTTPd
@@ -36,7 +36,7 @@ Rebol [
 		09-Jan-2023 "Oldes" {New home: https://github.com/Oldes/Rebol-HTTPd}
 		09-May-2023 "Oldes" {Root-less configuration possibility (default)}
 	]
-	Needs: [3.10.1 mime-types]
+	Needs: [3.11.0 mime-types]
 ]
 
 append system/options/log [httpd: 1]
@@ -372,7 +372,7 @@ sys/make-scheme [
 			dir: target/file
 			path: join "/" find/match/tail dir ctx/config/root
 		
-			try/except [
+			try/with [
 				out: make string! 2000
 				append out ajoin [
 					{<html><head><title>Index of } path
@@ -554,7 +554,7 @@ sys/make-scheme [
 			out/content: none
 		]
 
-		try/except [
+		try/with [
 			write port buffer
 		][
 			log-error "Write failed!"
@@ -564,7 +564,7 @@ sys/make-scheme [
 	]
 
 	Write-log: function [ctx][
-		try/except [
+		try/with [
 			msg: ajoin [
 				ctx/remote-ip
 				{ - - [} to-CLF-idate now {] "}
@@ -613,7 +613,7 @@ sys/make-scheme [
 				READ [
 					log-more ["bytes:^[[1m" length? port/data]
 					either header-end: find/tail port/data CRLF2BIN [
-						try/except [
+						try/with [
 							if none? ctx/state [
 								with inp [
 									parse copy/part port/data header-end [
@@ -671,7 +671,7 @@ sys/make-scheme [
 									close out/content ; closing source port
 									End-Client port
 								][
-									try/except [
+									try/with [
 										write port buffer
 									][
 										log-error  "Write failed (2)!"
@@ -730,7 +730,7 @@ sys/make-scheme [
 				ready?: false
 				data: head port/data
 				log-more ["bytes:^[[1m" length? data]
-				try/except [
+				try/with [
 					while [2 < length? data][
 						final?: data/1 & 128 = 128
 						opcode: data/1 & 15
@@ -857,7 +857,7 @@ sys/make-scheme [
 		append port/extra/clients client
 
 		log-more ["New client:^[[1;31m" client/extra/remote]
-		try/except [read client][
+		try/with [read client][
 			log-error ["Failed to read new client:" client/extra/remote]
 			log-error system/state/last-error
 		]
