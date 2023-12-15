@@ -1,11 +1,11 @@
 Rebol [
-	Title:  "HTTPD Scheme"
+	Title:  "HTTPd Scheme"
 	Type:    module
 	Name:    httpd
-	Date:    3-Oct-2023
-	Version: 0.8.2
+	Date:    14-Dec-2023
+	Version: 0.9.0
 	Author: ["Andreas Bolka" "Christopher Ross-Gill" "Oldes"]
-	Exports: [http-server decode-target to-CLF-idate]
+	Exports: [serve-http http-server decode-target to-CLF-idate]
 	Home:    https://github.com/Oldes/Rebol-HTTPd
 	Rights:  http://opensource.org/licenses/Apache-2.0
 	Purpose: {
@@ -35,6 +35,7 @@ Rebol [
 		06-Dec-2022 "Oldes" {Added minimal support for WebSocket connections}
 		09-Jan-2023 "Oldes" {New home: https://github.com/Oldes/Rebol-HTTPd}
 		09-May-2023 "Oldes" {Root-less configuration possibility (default)}
+		14-Dec-2023 "Oldes" {Deprecated the `http-server` function in favor of `serve-http` with a different configuration input}
 	]
 	Needs: [3.11.0 mime-types]
 ]
@@ -149,7 +150,7 @@ decode-multipart-data: func[
 
 	boundary-end: join "^M^/--" boundary
 	result: copy []
-	probe parse data [
+	parse data [
 		any [
 			"--" boundary CRLF
 			(header: copy [])
@@ -336,7 +337,7 @@ sys/make-scheme [
 			ctx [object!]
 		][
 			switch/default ctx/inp/method [
-				"HEAD" ; same like GET, but without sending content
+				"HEAD" ; same like GET, but without sending any content
 				"GET"  [ Actor/on-get  ctx ]
 				"POST" [ Actor/on-post ctx ]
 			][
@@ -353,11 +354,31 @@ sys/make-scheme [
 		][
 			;@@ this is just a placeholder!
 		]
+
 		On-Close-Websocket: func[
-			"Process READ action on client's port using websocket"
+			"Process CLOSE action on client's port using websocket"
 			ctx [object!] code [integer!]
+			/local reason
 		][
-			;@@ this is just a placeholder!
+			reason: any [
+				select [
+					1000 "the purpose for which the connection was established has been fulfilled."
+					1001 "a browser navigated away from a page."
+					1002 "a protocol error."
+					1003 "it has received a type of data it cannot accept."
+					1007 "it has received data within a message that was not consistent with the type of the message."
+					1008 "it has received a message that violates its policy."
+					1009 "it has received a message that is too big for it to process."
+					1010 "it has expected the server to negotiate one or more extension, but the server didn't return them in the response message of the WebSocket handshake."
+					1011 "it encountered an unexpected condition that prevented it from fulfilling the request."
+				] code
+				ajoin ["an unknown reason (" code ")"]
+			]
+			log-info ["WS connection is closing because" reason]
+			unless empty? reason: ctx/inp/content [
+				;; optional client's reason
+				log-info ["Client's reason:" as-red to string! reason]
+			]
 		]
 
 		On-List-Dir: func[
@@ -496,6 +517,7 @@ sys/make-scheme [
 	Respond: function [port [port!]][
 		ctx: port/extra
 		out: ctx/out
+		unless out/status [out/status: 200] ;; expect OK response if not set
 		log-more ["Respond:^[[22m" out/status status-codes/(out/status) length? out/content]
 		; send the response header
 		buffer: make binary! 1024
@@ -732,10 +754,10 @@ sys/make-scheme [
 				log-more ["bytes:^[[1m" length? data]
 				try/with [
 					while [2 < length? data][
-						final?: data/1 & 128 = 128
-						opcode: data/1 & 15
-						mask?:  data/2 & 128 = 128
-						len:    data/2 & 127
+						final?: data/1 & 2#10000000 = 2#10000000
+						opcode: data/1 & 2#00001111
+						mask?:  data/2 & 2#10000000 = 2#10000000
+						len:    data/2 & 2#01111111
 						data: skip data 2
 						;? final? ? opcode ? len
 
@@ -918,6 +940,26 @@ sys/make-scheme [
 			]
 		]
 	]
+
+	anti-hacking-rules: [
+		some [
+			;; common scripts, which we don't use
+			  #"." [
+			  	  %php
+			  	| %aspx
+			  	| %cgi
+			][end | #"?" | #"#"] reject
+			; common hacking attempts to root folders...
+			| #"/" [
+				  %ecp/      ; we are not an exchange server
+				| %mifs/     ; either not MobileIron (https://stackoverflow.com/questions/67901776/what-does-the-line-mifs-services-logservice-mean)
+				| %GponForm/ ; nor Gpon router (https://www.vpnmentor.com/blog/critical-vulnerability-gpon-router/)
+				| %.env end  ; https://stackoverflow.com/questions/64109005/do-these-env-get-requests-from-localhost-indicate-an-attack
+			] reject
+			| 1 skip
+		]
+	]
+
 	;=====================================================================
 	log-error: log-info: log-more: log-debug: none
 	set-verbose: func[verbose [integer!]][
@@ -934,7 +976,7 @@ sys/make-scheme [
 ]
 
 http-server: function [
-	"Initialize simple HTTP server"
+	"Initialize simple HTTP server (DEPRECATED)"
 	port  [integer!]        "Port to listen"
 	/config                 "Possibility to change default settings"
 	spec  [block! object!]  "Can hold: root, index, keep-alive, server-name"
@@ -942,27 +984,50 @@ http-server: function [
 	actions [block! object!] "Functions like: On-Get On-Post On-Post-Received On-Read On-List-Dir On-Not-Found"
 	/no-wait "Will not enter wait loop"
 ][
-	server: open join httpd://: port
-	if config [
-		if object? spec [ spec: body-of spec ]
-		if root: select spec 'root [
-			spec/root: case [
-				file? :root [attempt [dirize to-real-file clean-path root]]
-				'current-dir = :root [what-dir]
+	sys/log/error 'HTTPD "`http-server` function is deprecated, use `start-http` instead!"
+	spec: either config [[]][to block! spec]
+	if actor [extend spec 'actor actions]
+	extend spec 'port port
+	start-http/:no-wait spec
+]
+
+serve-http: function [
+	"Initiate a HTTP server and handle HTTP requests"
+	spec [integer! file! block! object! map!] "Can hold: port, root, index, keep-alive, server-name, actor callbacks"
+	/no-wait "Will not enter wait loop"
+][
+	case [
+		integer? port: spec [
+			spec: reduce/no-set [port: spec root: what-dir]
+		]
+		file? spec [
+			root: dirize to-real-file clean-path spec
+			port: 8000
+			spec: reduce/no-set [port: port root: root]
+		]
+		'else [
+			unless block? spec [spec: body-of spec]
+			port: any [select spec 'port 8000] ;; default port
+			if root: select spec 'root [
+				spec/root: case [
+					file? :root [attempt [dirize to-real-file clean-path root]]
+					'current-dir = :root [what-dir]
+				]
 			]
 		]
-		append server/extra/config spec
 	]
 
-	sys/log/info 'HTTPD ["Listening on port:" port "with root directory: " as-green server/extra/config/root]
-
-	;unless system/options/quiet [? server/extra/config]
-
-	if actor [
+	server: open join httpd://: :port
+	sys/log/info 'HTTPD ["Listening on port:" :port "with root directory:" as-green spec/root]
+	
+	if actions: select spec 'actor [
 		append server/actor either block? actions [
+			bind actions server/scheme
 			reduce/no-set actions
-		][	body-of actions ]
+		][	bind body-of actions server/scheme ]
+		remove/part find spec 'actor 2 ;; not including actor in the config
 	]
+	append server/extra/config spec
 	unless no-wait [
 		forever [
 			p: wait [server server/extra/subport 15]

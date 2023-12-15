@@ -18,7 +18,7 @@
     log.buffer = [];
 
     function connect() {
-        url = "ws://localhost:8081/echo";
+        url = `ws://${window.location.hostname}:${window.location.port}/echo`;
         socket = new WebSocket(url);
         socket.onopen = function() {
             log("open");

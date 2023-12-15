@@ -30,28 +30,48 @@ Based on '[A Tiny HTTP Server](https://github.com/earl/rebol3/blob/master/script
  * 02-Jul-2020 Oldes: Added possibility to stop server and return data back to client (useful for OAuth2)
  * 06-Dec-2022 Oldes: Added minimal support for WebSocket connections
  * 09-Jan-2023 Oldes: Setting up a new home for the project on [Github](https://github.com/Oldes/Rebol-HTTPd)
+ * See: https://github.com/Oldes/Rebol-HTTPd/commits/master/
 
 ## Usage:
 
-1. Minimal server setup for serving content of the current directory:
+1. Minimal server setup for serving content of the current directory on port `8000`:
 ```rebol
-http-server/config 8888 [root: current-dir]
+serve-http 8000
 ```
 
-2. Minimal server setup for in-memory generated content (root-less)
+2. Minimal server setup for serving content of the specified directory on default port `8000`
 ```rebol
-http-server/actor 8888 [
-    ;- Server's actor functions                                                                  
-    On-Header: func [ctx][
-        ;; Just respond with data we recieved... 
-        ctx/out/status: 200
-        ctx/out/header/Content-Type: "text/plain; charset=UTF-8"
+serve-http %hosts/test/
+```
+
+3. Simple server setup for in-memory generated content (root-less)
+```rebol
+serve-http [port: 8000 actor: [
+    On-Get: func [ctx][
+        ;; just responding with the content we received...
         ctx/out/content: mold ctx/inp
     ]
-]
+    On-Post-Received: func[ctx][
+        ;; responding with a parsed content; including a custom message in the header...
+        ctx/out/header/X-Response: "Just a custom message in the header."
+        ctx/out/content: mold ctx/inp/content
+    ]
+]]
 ```
+At this moment there are these actors which may be used:
+* `On-Accept` (can be used to limit access per IP)
+* `On-Header` (can be used for redirects)
+* `On-Get` (classic GET request)
+* `On-Post` (when you prefer raw data only)
+* `On-Post-Received` (contains decoded input content)
+* `On-Read` (to handle other then current HEAD/GET/POST request methods)
+* `On-Read-Websocket` (to process READ action on client's port using websocket)
+* `On-Close-Websocket` (used when client closes websocket connection)
+* `On-List-Dir` (to provide own directory listing content)
+* `On-Not-Found` (to provide a custom content, when requested file is not found)
 
-3. For more complete server setup check [server-test.r3](https://github.com/Oldes/Rebol-HTTPd/blob/master/server-test.r3) script.
+For more complete server setup check [server-test.r3](https://github.com/Oldes/Rebol-HTTPd/blob/master/server-test.r3) script.
+
 
 ## Setup a service on Linux
 

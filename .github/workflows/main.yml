@@ -16,8 +16,8 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v3
 
-    - name: Install Rebol for extension test
-      uses: oldes/install-rebol@v3.10.2
+    - name: Install Rebol for the test
+      uses: oldes/install-rebol@v3.15.0
       with:
         product: Bulk
 
