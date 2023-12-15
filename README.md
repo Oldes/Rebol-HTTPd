@@ -51,24 +51,25 @@ serve-http [port: 8000 actor: [
         ;; just responding with the content we received...
         ctx/out/content: mold ctx/inp
     ]
-    On-Post-Received: func[ctx][
+    On-Post: func[ctx][
         ;; responding with a parsed content; including a custom message in the header...
         ctx/out/header/X-Response: "Just a custom message in the header."
         ctx/out/content: mold ctx/inp/content
     ]
 ]]
 ```
+
 At this moment there are these actors which may be used:
-* `On-Accept` (can be used to limit access per IP)
-* `On-Header` (can be used for redirects)
-* `On-Get` (classic GET request)
-* `On-Post` (when you prefer raw data only)
-* `On-Post-Received` (contains decoded input content)
-* `On-Read` (to handle other then current HEAD/GET/POST request methods)
-* `On-Read-Websocket` (to process READ action on client's port using websocket)
-* `On-Close-Websocket` (used when client closes websocket connection)
-* `On-List-Dir` (to provide own directory listing content)
-* `On-Not-Found` (to provide a custom content, when requested file is not found)
+* `On-Accept` = can be used to limit access per IP
+* `On-Header` = can be used for redirects
+* `On-Get` = classic GET request
+* `On-Post` = contains fully decoded (x-www-form-urlencoded/multipart/json/text) input content
+* `On-Read` = to handle other then current HEAD/GET/POST request methods
+* `On-Read-Post` = to process raw POSTed data
+* `On-Read-Websocket` = to process READ action on client's port using websocket
+* `On-Close-Websocket` = used when client closes websocket connection
+* `On-List-Dir` = to provide own directory listing content
+* `On-Not-Found` = to provide a custom content, when requested file is not found
 
 For more complete server setup check [server-test.r3](https://github.com/Oldes/Rebol-HTTPd/blob/master/server-test.r3) script.
 

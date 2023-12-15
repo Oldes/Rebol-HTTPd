@@ -286,7 +286,12 @@ sys/make-scheme [
 			]
 		]
 
-		On-Post: func[ctx [object!] /local content header length type temp][
+		On-Post: func [ctx [object!]][
+			;@@ this is just a placeholder!
+			true
+		]
+
+		On-Read-Post: func[ctx [object!] /local content header length type temp][
 			;@@ TODO: handle `Expect` header: https://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.20
 			header: ctx/inp/header
 			length: select header 'Content-Length
@@ -323,13 +328,8 @@ sys/make-scheme [
 						ctx/inp/content: to string! content
 					]
 				]
-				Actor/On-Post-Received ctx
+				Actor/On-Post ctx
 			]
-		]
-
-		On-Post-Received: func [ctx [object!]][
-			;@@ this is just a placeholder!
-			true
 		]
 
 		On-Read: func[
@@ -339,7 +339,7 @@ sys/make-scheme [
 			switch/default ctx/inp/method [
 				"HEAD" ; same like GET, but without sending any content
 				"GET"  [ Actor/on-get  ctx ]
-				"POST" [ Actor/on-post ctx ]
+				"POST" [ Actor/on-read-post ctx ]
 			][
 				ctx/state: 'data-received
 				ctx/out/status: 405 ; Method Not Allowed

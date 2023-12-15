@@ -98,10 +98,10 @@ serve-http [
 				]
 			]
 		]
-		On-Post-Received: func [ctx [object!] /local data][
+		On-Post: func [ctx [object!] /local data][
 			if ctx/inp/target/file = %/api/v2/do [
 				;- A primitive API example                                                    
-				try/except [
+				try/with [
 					;?? ctx/inp
 					data: ctx/inp/content
 					unless map? data [data: to map! ctx/inp/content/1] ;;= url-encoded input
