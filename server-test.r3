@@ -21,6 +21,7 @@ system/options/quiet: false
 
 make-dir %logs/  ;; make sure that there is the directory for logs
 
+robots.txt: {User-agent: *^/Disallow: /}
 humans.txt: {
        __
       (  )
@@ -77,13 +78,6 @@ serve-http [
 					ctx/out/content: "hello"
 					; request processing will stop with response 200 serving the plain text content
 				]
-				%/humans.txt [
-					;@@ https://codeburst.io/all-about-humans-humans-txt-actually-f571d37f92d2
-					;-- serving the content directly from the memory
-					ctx/out/status: 200
-					ctx/out/header/Content-Type: "text/plain; charset=UTF-8"
-					ctx/out/content: humans.txt
-				]
 				%/ip [
 					; service to resolve the remote ip like: http://ifconfig.me/ip
 					ctx/out/status: 200
@@ -135,6 +129,22 @@ serve-http [
 				"<br/>Request header:<pre>" mold ctx/inp/header </pre>
 				"Received <code>" ctx/inp/header/Content-Type/1 
 				"</code> data:<pre>" mold ctx/inp/content </pre>
+			]
+		]
+		On-Not-Found: func[ctx][
+			;; Here may be provided custom content, when requested file is not found
+			unless parse ctx/inp/target/file [
+				;; we must work with an absolute path!
+				ctx/config/root [
+					;-- serving the content directly from the memory
+					%humans.txt (ctx/out/content: humans.txt) ;@@ https://codeburst.io/all-about-humans-humans-txt-actually-f571d37f92d2
+				|	%robots.txt (ctx/out/content: robots.txt) ;@@ https://developers.google.com/search/docs/crawling-indexing/robots/create-robots-txt
+				|	%bot-trap/  (ctx/out/content: ajoin ["Welcome bot: " ctx/inp/header/User-Agent])
+				]
+			][
+				ctx/out/status: 404
+				;; including an optional message...
+				ctx/out/content: "Content not found on this server!"
 			]
 		]
 		;-- WebSocket related actions                                                                
