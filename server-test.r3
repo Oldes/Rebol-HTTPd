@@ -16,7 +16,7 @@ Rebol [
 
 import %httpd.reb
 
-system/options/log/httpd: 4 ; for verbose output
+system/schemes/httpd/set-verbose 4 ; for verbose output
 system/options/quiet: false
 
 make-dir %logs/  ;; make sure that there is the directory for logs
