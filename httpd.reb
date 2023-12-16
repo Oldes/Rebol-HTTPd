@@ -242,6 +242,10 @@ sys/make-scheme [
 			/local target path info index modified If-Modified-Since
 		][
 			target: ctx/inp/target
+			unless ctx/config/root [
+				Actor/On-Not-Found ctx target
+				exit
+			]
 			target/file: path: join ctx/config/root next clean-path/only target/file
 			ctx/out/header/Date: to-idate/gmt now
 			ctx/out/status: 200
@@ -1007,11 +1011,19 @@ serve-http: function [
 		]
 		'else [
 			unless block? spec [spec: body-of spec]
+			spec: reduce/no-set spec
 			port: any [select spec 'port 8000] ;; default port
-			if root: select spec 'root [
-				spec/root: case [
-					file? :root [attempt [dirize to-real-file clean-path root]]
-					'current-dir = :root [what-dir]
+			root: select spec 'root
+			if string? root [root: to-rebol-file root]
+			if file?   root [
+				;; to-real-file returns none when file does not exists on Posix
+				;; that should be changed... also on Linux there is no trailing slash
+				;; even when the source is a directory :-/ 
+				spec/root: either exists? root [
+					dirize to-real-file root
+				][
+					sys/log/error 'HTTPD ["Specified root not found:" as-red root]
+					none
 				]
 			]
 		]
