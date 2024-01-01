@@ -2,8 +2,8 @@ Rebol [
 	Title:  "HTTPd Scheme"
 	Type:    module
 	Name:    httpd
-	Date:    14-Dec-2023
-	Version: 0.9.0
+	Date:    1-Jan-2024
+	Version: 0.9.1
 	Author: ["Andreas Bolka" "Christopher Ross-Gill" "Oldes"]
 	Exports: [serve-http http-server decode-target to-CLF-idate]
 	Home:    https://github.com/Oldes/Rebol-HTTPd
@@ -988,11 +988,11 @@ http-server: function [
 	actions [block! object!] "Functions like: On-Get On-Post On-Post-Received On-Read On-List-Dir On-Not-Found"
 	/no-wait "Will not enter wait loop"
 ][
-	sys/log/error 'HTTPD "`http-server` function is deprecated, use `start-http` instead!"
+	sys/log/error 'HTTPD "`http-server` function is deprecated, use `serve-http` instead!"
 	spec: either config [[]][to block! spec]
 	if actor [extend spec 'actor actions]
 	extend spec 'port port
-	start-http/:no-wait spec
+	serve-http/:no-wait spec
 ]
 
 serve-http: function [
