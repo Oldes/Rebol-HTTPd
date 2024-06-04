@@ -4,7 +4,7 @@ Rebol [
 	Date:    14-Dec-2023
 	Author: "Oldes"
 	Version: 0.9.0
-	Needs:   3.16.0
+	Needs:   3.11.0
 	Note: {
 		To test POST method from Rebol console, try this:
 		```
@@ -41,7 +41,7 @@ serve-http [
 	keep-alive: [30 100] ;= [timeout max-requests] or FALSE to turn it off
 	log-access: %logs/test-access.log
 	log-errors: %logs/test-errors.log
-	list-dir?:  #(true)
+	list-dir?:  true
 	;- Server's actor functions                                                                  
 	actor: [
 		On-Accept: func [info [object!]][
