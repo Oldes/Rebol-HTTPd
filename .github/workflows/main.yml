@@ -14,10 +14,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Install Rebol for the test
-      uses: oldes/install-rebol@v3.15.0
+      uses: oldes/install-rebol@v3.17.0
       with:
         product: Bulk
 

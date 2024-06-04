@@ -2,8 +2,8 @@ Rebol [
 	Title:  "HTTPd Scheme"
 	Type:    module
 	Name:    httpd
-	Date:    1-Jan-2024
-	Version: 0.9.1
+	Date:    4-Jun-2024
+	Version: 0.9.2
 	Author: ["Andreas Bolka" "Christopher Ross-Gill" "Oldes"]
 	Exports: [serve-http http-server decode-target to-CLF-idate]
 	Home:    https://github.com/Oldes/Rebol-HTTPd
@@ -216,11 +216,11 @@ sys/make-scheme [
 					clients: make block! 16
 				]
 				subport/extra/config:
-				config: make map! [
-					root:       #[none]
+				config: make map! reduce/no-set [
+					root:        none
 					index:       [%index.html %index.htm]
-					keep-alive: #[true]
-					list-dir?:  #[true]
+					keep-alive:  true
+					list-dir?:   true
 					server-name: "Rebol3-HTTPd"
 				]
 			]
@@ -618,7 +618,7 @@ sys/make-scheme [
 	]
 
 	Awake-Client: wrap [
-		chars-method: #[bitset! #{00000000000000007FFFFFE0}] ; #"A" - #"Z"
+		chars-method: charset [#"A" - #"Z"]
 		;from-method: ["GET" | "POST" | "HEAD" | "PUT" | "DELETE" | "TRACE" | "CONNECT" | "OPTIONS"]
 		chars: complement union space: charset " " charset [#"^@" - #"^_"]
 		CRLF2BIN: #{0D0A0D0A}
