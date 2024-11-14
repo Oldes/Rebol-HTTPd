@@ -18,7 +18,7 @@ Rebol [
 import %httpd.reb
 
 system/schemes/httpd/set-verbose 4 ; for verbose output
-system/options/quiet: false
+system/options/quiet: true
 
 make-dir %logs/  ;; make sure that there is the directory for logs
 
@@ -42,12 +42,13 @@ serve-http [
 	log-access: %logs/test-access.log
 	log-errors: %logs/test-errors.log
 	list-dir?:  true
+	trust-ips: [127.0.0.1]
 	;- Server's actor functions                                                                  
 	actor: [
-		On-Accept: func [info [object!]][
+		On-Accept: func [ctx][
 			; allow only connections from localhost
 			; TRUE = accepted, FALSE = refuse
-			find [ 127.0.0.1 ] info/remote-ip 
+			find ctx/config/trust-ips ctx/remote-ip 
 		]
 		On-Header: func [ctx [object!] /local path key][
 			path: ctx/inp/target/file
