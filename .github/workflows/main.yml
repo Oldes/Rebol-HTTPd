@@ -23,3 +23,6 @@ jobs:
 
     - name: Test HTTPd server
       run:  ./rebol3 client-test.r3
+
+    - name: Test HTTPd server with RSP content
+      run:  ./rebol3 client-test-rsp.r3
