@@ -24,6 +24,7 @@ foreach test [
 	[ [method: GET values: [a: "1" b: "2"]] == load url/test_03.rsp?a=1&b=2 ]
 	[ #[test: 4] == decode 'json read url/test_04.rsp ]
 	[ "124" == read url/test_05.rsp ]
+	[ "212456" == read url/test_06.rsp ]
 ][
 	print-horizontal-line
 	print [as-yellow "Assert:" mold/flat test]

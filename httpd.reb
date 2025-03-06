@@ -204,6 +204,7 @@ rsp-context: context [
 		change-dir first split-path path
 		process/include path ctx
 		change-dir dir
+		() ;= unset!
 	]
 	process: function[data [file! binary! string!] ctx [object!] /include /local res][
 		self/ctx: ctx
