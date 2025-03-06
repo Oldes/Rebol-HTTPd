@@ -25,6 +25,7 @@ foreach test [
 	[ #[test: 4] == decode 'json read url/test_04.rsp ]
 	[ "124" == read url/test_05.rsp ]
 	[ "212456" == read url/test_06.rsp ]
+	[ "<%= 1 + 1 %>" == read url/test_07.rsp ]
 ][
 	print-horizontal-line
 	print [as-yellow "Assert:" mold/flat test]
