@@ -1,0 +1,4 @@
+<%=
+	ctx/out/header/Content-Type: "application/json"
+	to-json #[test: 4]
+%>

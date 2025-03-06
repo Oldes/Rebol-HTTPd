@@ -12,6 +12,7 @@ Rebol [
 
 		```
 	}
+	Needs: 3.16.0
 ]
 
 assert-http: func[
@@ -50,10 +51,9 @@ foreach test [
 	[ assert-http      200 http://localhost:8081/humans.txt  ]
 	[ assert-http/post 200 http://localhost:8081 {msg=hello} ]
 	[ assert-http/post 200 http://localhost:8081 [post [user-agent: "UA"] "hello"] ]
-;These tests needs newer Rebol version then is available in Github actions now (automatically converts a map! to json)
-;	[ assert-http/post 200 http://localhost:8081/api/v2/do #(token: "SOME_SECRET" code: "[1 + 1]") ]
-;	[ assert-http/post 401 http://localhost:8081/api/v2/do #(token: "ELSE_SECRET" code: "[1 + 1]") ]
-;	[ assert-http/post 200 http://localhost:8081/api/v2/do {token=SOME_SECRET&code=1%20%2B%202} ]
+	[ assert-http/post 200 http://localhost:8081/api/v2/do #[token: "SOME_SECRET" code: "[1 + 1]"] ]
+	[ assert-http/post 401 http://localhost:8081/api/v2/do #[token: "ELSE_SECRET" code: "[1 + 1]"] ]
+	[ assert-http/post 200 http://localhost:8081/api/v2/do {token=SOME_SECRET&code=1%20%2B%202} ]
 ][
 	print-horizontal-line
 	print [as-yellow "Assert:" mold/flat test]
@@ -74,8 +74,11 @@ print as-green "Stopping the server..."
 access-os/set 'pid :pid
 wait 0:0:1
 
-if fails > 0 [ quit/return fails ]
-print as-green "DONE"
+if fails > 0 [
+	print as-red [fails "tests have failed!"]
+	quit/return fails
+]
+print as-green "All tests have passed."
 
 
 

@@ -2,8 +2,8 @@ Rebol [
 	Title:  "HTTPd Scheme"
 	Type:    module
 	Name:    httpd
-	Date:    22-Jul-2024
-	Version: 0.9.4
+	Date:    6-Mar-2025
+	Version: 0.10.0
 	Author: ["Andreas Bolka" "Christopher Ross-Gill" "Oldes"]
 	Exports: [serve-http http-server decode-target to-CLF-idate]
 	Home:    https://github.com/Oldes/Rebol-HTTPd
@@ -36,6 +36,7 @@ Rebol [
 		09-Jan-2023 "Oldes" {New home: https://github.com/Oldes/Rebol-HTTPd}
 		09-May-2023 "Oldes" {Root-less configuration possibility (default)}
 		14-Dec-2023 "Oldes" {Deprecated the `http-server` function in favor of `serve-http` with a different configuration input}
+		06-Mar-2025 "Oldes" {Initial implementation of RSP (Rebol Server Pages)}
 	]
 	Needs: [3.11.0 mime-types]
 ]
@@ -193,6 +194,55 @@ to-CLF-idate: func [
 	]
 ]
 
+rsp-context: context [
+	ctx: none
+	print:   func[value][append append ctx/out/content value LF]
+	prin:    func[value][append ctx/out/content value]
+	probe:   func[value][append ctx/out/content mold value]
+	include: func[path [file!] /local dir][
+		dir: what-dir
+		change-dir first split-path path
+		process/include path ctx
+		change-dir dir
+	]
+	process: function[data [file! binary! string!] ctx [object!] /include /local res][
+		self/ctx: ctx
+		out: ctx/out/content
+		unless include [clear out]
+		if file? data [data: read/string data]
+		parse data [any [
+			s: to "<%" e: (append out copy/part s e) 
+			2 skip [
+				#"@" copy code: to "%>" 2 skip (
+					try/with [
+						file? file: transcode/one code
+						exists? file
+						append out read/string file
+					] :probe
+				)
+				|
+				set get?: opt [#"=" | #"@"] copy code: to "%>" 2 skip (
+					try/with [
+						code: transcode code
+						bind/new code ctx/config/app
+						bind code lib    ;; binds to the library
+						bind code self   ;; binds to the RSP context
+					] :probe
+					catch/all/quit [
+						set/any 'res try/with :code :lib/probe
+						if get? [append out :res]
+					]
+				)
+			]
+			| s: to end e: (append out copy/part s e)
+		]]
+		out
+	]
+]
+protect rsp-context
+unprotect in rsp-context 'ctx
+
+
 ;------------------------------------------------------------------------
 ;-- Scheme definition:                                                 --
 ;------------------------------------------------------------------------
@@ -230,9 +280,15 @@ sys/make-scheme [
 			port
 		]
 
-		Close: func [port [port!]][
+		Close: func [port [port!] /local ctx file][
 			log-more ["Closing server at port:^[[22m" port/spec/port]
-			close port/extra/subport
+			ctx: port/extra
+			close ctx/subport
+			;; closing log ports if there are any
+			if port? file: ctx/config/log-access [ close file ctx/config/log-access: none]
+			if port? file: ctx/config/log-errors [ close file ctx/config/log-errors: none]
+			port/extra: none
+			port
 		]
 
 		On-Accept: func [ctx [object!]][ true ]
@@ -250,6 +306,15 @@ sys/make-scheme [
 			target/file: path: join ctx/config/root next clean-path/only target/file
 			ctx/out/header/Date: to-idate/gmt now
 			ctx/out/status: 200
+
+			if all [
+				ctx/config/rsp
+				%.rsp == skip tail ctx/inp/target/file -4
+			][
+				Process-RSP ctx
+				exit
+			]
+
 			either exists? path [
 				if dir? path [
 					foreach file ctx/config/index [
@@ -296,7 +361,7 @@ sys/make-scheme [
 			true
 		]
 
-		On-Read-Post: func[ctx [object!] /local content header length type temp][
+		On-Read-Post: func[ctx [object!] /local content header length type temp target][
 			;@@ TODO: handle `Expect` header: https://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.20
 			header: ctx/inp/header
 			length: select header 'Content-Length
@@ -333,7 +398,19 @@ sys/make-scheme [
 						ctx/inp/content: to string! content
 					]
 				]
-				Actor/On-Post ctx
+				either all [
+					ctx/config/rsp
+					%.rsp == skip tail ctx/inp/target/file -4
+					ctx/config/root
+				][
+					target: ctx/inp/target 
+					target/file: join ctx/config/root next clean-path/only target/file
+					ctx/out/header/Date: to-idate/gmt now
+					ctx/out/status: 200
+					Process-RSP ctx
+				][
+					Actor/On-Post ctx
+				]
 			]
 		]
 
@@ -613,12 +690,12 @@ sys/make-scheme [
 				#"^/"
 			]
 			prin msg
-			if file? file: ctx/config/log-access [
+			if port? file: ctx/config/log-access [
 				write/append file msg
 			]
 			if all [
 				ctx/out/status >= 400
-				file? file: ctx/config/log-errors
+				port? file: ctx/config/log-errors
 			][
 				write/append file msg
 			]
@@ -855,10 +932,10 @@ sys/make-scheme [
 	]
 
 
-	New-Client: func[port [port!] /local client info err][
+	New-Client: func[port [port!] /local client info err ctx][
 		client: first port
 		info: query/mode client [remote-ip: remote-port: local-ip: local-port:]
-		client/extra: make object! [
+		client/extra: ctx: context [
 			state: none
 			parent: port
 			remote-ip: info/remote-ip
@@ -869,7 +946,6 @@ sys/make-scheme [
 				target:
 				header:
 				content: none
-				started: stats/timer
 			]
 			out: object [
 				Status: none
@@ -881,11 +957,12 @@ sys/make-scheme [
 			timeout: none
 			done?: none
 			requests: 0   ; number of already served requests per connection
+			started: stats/timer
 		]
 		;? port
-		client/extra/config: port/extra/config
+		ctx/config: port/extra/config
 		
-		unless Actor/On-Accept client/extra [
+		unless Actor/On-Accept ctx [
 			; connection not allowed
 			log-more ["Client not accepted:^[[22m" info/remote-ip]
 			close client
@@ -894,9 +971,11 @@ sys/make-scheme [
 		client/awake: :Awake-Client
 		append port/extra/clients client
 
-		log-more ["New client:^[[1;31m" client/extra/remote]
+
+
+		log-more ["New client:^[[1;31m" ctx/remote]
 		try/with [read client][
-			log-error ["Failed to read new client:" client/extra/remote]
+			log-error ["Failed to read new client:" ctx/remote]
 			log-error system/state/last-error
 		]
 	]
@@ -957,6 +1036,19 @@ sys/make-scheme [
 		]
 	]
 
+	Process-RSP: func[ctx [object!] /local dir path][
+		log-more ["RSP input:^[[1m" mold ctx/inp/target/file]
+		dir: what-dir
+		ctx/out/content: make string! 1000
+		path: ctx/inp/target/file
+		change-dir first split-path path
+		rsp-context/process path ctx
+		unless ctx/out/header/Content-Type [
+			ctx/out/header/Content-Type: "text/html; charset=UTF-8"
+		]
+		change-dir dir
+	]
+
 	anti-hacking-rules: [
 		some [
 			;; common scripts, which we don't use
@@ -1014,18 +1106,18 @@ serve-http: function [
 ][
 	case [
 		integer? port: spec [
-			spec: reduce/no-set [port: spec root: what-dir]
+			spec: make map! reduce/no-set [port: spec root: what-dir]
 		]
 		file? spec [
 			root: dirize to-real-file clean-path spec
 			port: 8000
-			spec: reduce/no-set [port: port root: root]
+			spec: make map! reduce/no-set [port: port root: root]
 		]
 		'else [
 			unless block? spec [spec: body-of spec]
-			spec: reduce/no-set spec
-			port: any [select spec 'port 8000] ;; default port
-			root: select spec 'root
+			spec: make map! reduce/no-set spec
+			port: any [spec/port 8000] ;; default port
+			root: spec/root
 			if string? root [root: to-rebol-file root]
 			if file?   root [
 				;; to-real-file returns none when file does not exists on Posix
@@ -1038,20 +1130,33 @@ serve-http: function [
 					none
 				]
 			]
+			if object? spec/app [
+				spec/rsp: rsp-context
+			]
 		]
 	]
 
 	server: open join httpd://: :port
 	sys/log/info 'HTTPD ["Listening on port:" :port "with root directory:" as-green spec/root]
 	
-	if actions: select spec 'actor [
+	if actions: spec/actor [
 		append server/actor either block? actions [
 			bind actions server/scheme
 			reduce/no-set actions
 		][	bind body-of actions server/scheme ]
-		remove/part find spec 'actor 2 ;; not including actor in the config
+		spec/actor: none ;; not including actor in the config
 	]
-	append server/extra/config spec
+	append config: server/extra/config body-of spec
+
+	if file? file: config/log-access [
+		new: not exists? file
+		config/log-access: open/:new/write/seek file
+	]
+	if file? file: config/log-errors [
+		new: not exists? file
+		config/log-errors: open/:new/write/seek file
+	] 
+
 	unless no-wait [
 		forever [
 			p: wait [server server/extra/subport 15]

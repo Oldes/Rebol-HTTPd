@@ -1,0 +1,8 @@
+now: <%= now %>
+pre: <%= try/with [num] [@null] %>
+rnd: <% print num: random-number %>
+<% ls %>
+<%= name %>
+<%= random-number %>
+<% out: ctx/out/content %>
+<% append out now %>

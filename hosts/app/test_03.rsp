@@ -1,0 +1,2 @@
+method: <%= ctx/inp/method %>
+values: <%= mold ctx/inp/target/values %>
