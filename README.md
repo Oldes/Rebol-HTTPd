@@ -1,3 +1,5 @@
+[![rebol-httpd](https://github.com/user-attachments/assets/2953d428-2100-4920-a68b-74831a6b9741)](https://github.com/oldes/Rebol-HTTPd)
+
 [![Rebol-HTTPd CI](https://github.com/Oldes/Rebol-HTTPd/actions/workflows/main.yml/badge.svg)](https://github.com/Oldes/Rebol-HTTPd/actions/workflows/main.yml)
 [![Zulip](https://img.shields.io/badge/zulip-join_chat-brightgreen.svg)](https://rebol.zulipchat.com/#narrow/stream/371632-Rebol.2FHTTPd)
 
