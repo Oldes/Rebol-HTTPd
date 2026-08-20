@@ -2,8 +2,8 @@ Rebol [
 	Title:  "HTTPd Scheme"
 	Type:    module
 	Name:    httpd
-	Date:    6-Mar-2025
-	Version: 0.10.0
+	Date:    20-Aug-2026
+	Version: 0.11.0
 	Author: ["Andreas Bolka" "Christopher Ross-Gill" "Oldes"]
 	Exports: [serve-http http-server decode-target to-CLF-idate]
 	Home:    https://github.com/Oldes/Rebol-HTTPd
@@ -846,7 +846,7 @@ sys/make-scheme [
 				data: head port/data
 				log-more ["bytes:^[[1m" length? data]
 				try/with [
-					while [2 < length? data][
+					while [2 <= length? data][
 						final?: data/1 & 2#10000000 = 2#10000000
 						opcode: data/1 & 2#00001111
 						mask?:  data/2 & 2#10000000 = 2#10000000
@@ -857,17 +857,18 @@ sys/make-scheme [
 						;@@ Not removing bytes until we make sure, that there is enough data!
 						case [
 							len = 126 [
-								if 2 >= length? data [break]
+								if 2 > length? data [break]
 								len: binary/read data 'UI16
 								data: skip data 2
 							]
 							len = 127 [
-								if 8 >= length? data [break]
+								if 8 > length? data [break]
 								len: binary/read data 'UI64
 								data: skip data 8
 							]
 						]
-						if (4 + length? data) < len [break]
+						;; mask (if any) + payload must be fully buffered before we touch it
+						if (length? data) < (len + pick [4 0] mask?) [break]
 						data: truncate data ;; removes already processed bytes from the head
 						either mask? [
 							masks:   take/part data 4
@@ -1094,7 +1095,7 @@ http-server: function [
 	/no-wait "Will not enter wait loop"
 ][
 	sys/log/error 'HTTPD "`http-server` function is deprecated, use `serve-http` instead!"
-	spec: either config [[]][to block! spec]
+	spec: either config [to block! spec][[]]
 	if actor [extend spec 'actor actions]
 	extend spec 'port port
 	serve-http/:no-wait spec
