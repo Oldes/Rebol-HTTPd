@@ -47,6 +47,57 @@ assert-head: func[
 	]
 ]
 
+ws-echo-test: function [
+	"Sends one complete and one split WebSocket frame in a single write; expects both echoed"
+][
+	request: to binary! ajoin [
+		"GET /echo HTTP/1.1^M^/Host: localhost^M^/"
+		"Upgrade: websocket^M^/Connection: Upgrade^M^/"
+		"Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==^M^/"
+		"Sec-WebSocket-Version: 13^M^/^M^/"
+	]
+	;; masked text frames with a zero mask key: "a" and "b"
+	frame-a: #{81810000000061}
+	frame-b: #{81810000000062}
+	result: copy []
+	stage: 'handshake
+	conn: open tcp://127.0.0.1:8081
+	conn/awake: func [event /local port data][
+		port: event/port
+		switch event/type [
+			lookup  [open port]
+			connect [write port request]
+			wrote   [read port]
+			read [
+				data: port/data
+				case [
+					stage = 'handshake [
+						either find data #{0D0A0D0A} [
+							unless find data "101 " [return true] ;; handshake failed
+							stage: 'first
+							;; full frame "a" + first 3 bytes of frame "b" in one write
+							write port join frame-a copy/part frame-b 3
+						][	read port ]
+					]
+					3 > length? data [read port]
+					'else [
+						append result copy data
+						either stage = 'first [
+							stage: 'second
+							write port skip frame-b 3 ;; rest of frame "b"
+						][	return true ] ;; done
+					]
+				]
+			]
+			close [return true]
+		]
+		false
+	]
+	wait [conn 5]
+	close conn
+	result = [#{810161} #{810162}]
+]
+
 log-start: any [size? %logs/test-errors.log 0]
 
 print-hline
@@ -75,6 +126,8 @@ foreach test [
 
 	[ assert-head http://localhost:8081/           ] ;; file (index) path
 	[ assert-head http://localhost:8081/humans.txt ] ;; actor-generated content
+
+	[ ws-echo-test ]
 ][
 	print-hline
 	print [as-yellow "Assert:" mold/flat test]

@@ -933,6 +933,8 @@ sys/make-scheme [
 				]
 				either ready? [
 					;; there was complete input...
+					;; `write` replaces port/data, so keep any unprocessed (partial frame) bytes
+					ctx/pending: head port/data
 					write port either all [
 						series? content: ctx/out/content
 						not empty? content
@@ -945,6 +947,10 @@ sys/make-scheme [
 				]
 			]
 			WROTE [
+				if ctx/pending [
+					port/data: ctx/pending ;; next read appends to the partial frame
+					ctx/pending: none
+				]
 				read port
 			]
 			CLOSE [
@@ -981,6 +987,7 @@ sys/make-scheme [
 			timeout: none
 			done?: none
 			requests: 0   ; number of already served requests per connection
+			pending: none ; unprocessed input bytes to restore after a write
 			started: stats/timer
 		]
 		;? port
