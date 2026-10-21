@@ -2,8 +2,8 @@ Rebol [
 	Title:  "HTTPd Scheme"
 	Type:    module
 	Name:    httpd
-	Date:    20-Aug-2026
-	Version: 0.11.0
+	Date:    21-Oct-2026
+	Version: 0.11.1
 	Author: ["Andreas Bolka" "Christopher Ross-Gill" "Oldes"]
 	Exports: [serve-http http-server decode-target to-CLF-idate]
 	Home:    https://github.com/Oldes/Rebol-HTTPd
@@ -830,6 +830,21 @@ sys/make-scheme [
 		true
 	]
 
+	WS-Encode-Frame: function [
+		"Encodes data as a single final, unmasked WebSocket text frame (server -> client)"
+		data [binary! string!]
+	][
+		data: to binary! data
+		len:  length? data
+		bin:  binary len + 10
+		binary/write bin case [
+			len < 126    [[UI8 129 UI8          :len :data]]
+			len <= 65535 [[UI8 129 UI8 126 UI16 :len :data]]
+			'else        [[UI8 129 UI8 127 UI64 :len :data]]
+		]
+		head bin/buffer
+	]
+
 	Awake-Websocket: function [
 		event [event!]
 	][
@@ -904,18 +919,7 @@ sys/make-scheme [
 						series? content: ctx/out/content
 						not empty? content
 					][
-						content: to binary! content
-						clear ctx/out/content
-						len: length? content
-						;print len
-						;prin "out: " ? content
-						bin: binary len
-						binary/write bin case [
-							len < 127                     [ [UI8 129 UI8          :len :content] ]
-							all [ len > 126 len <= 65535 ][ [UI8 129 UI8 126 UI16 :len :content] ]
-							len > 65535                   [ [UI8 129 UI8 127 UI64 :len :content] ]	  
-						]
-						head bin/buffer
+						also WS-Encode-Frame content clear content
 					][	"" ]
 				][
 					;; needs more data!
@@ -1073,6 +1077,7 @@ sys/make-scheme [
 	;=====================================================================
 	log-error: log-info: log-more: log-debug: none
 	set-verbose: func[verbose [integer!]][
+		? verbose
 		log-error: log-info: log-more: log-debug: none
 		case/all [
 			verbose >= 0 [log-error: func[msg][sys/log/error 'HTTPD :msg]]
@@ -1082,7 +1087,7 @@ sys/make-scheme [
 		]
 		system/options/log/httpd: verbose
 	]
-	set-verbose 1
+	set-verbose system/options/log/httpd
 ]
 
 http-server: function [
