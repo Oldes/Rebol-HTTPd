@@ -1,10 +1,10 @@
 Rebol [
 	Title:  "Test HTTPd Scheme"
 	File:   %server-test.r3
-	Date:    14-Dec-2023
+	Date:    21-Oct-2026
 	Author: "Oldes"
-	Version: 0.9.0
-	Needs:   3.11.0
+	Version: 0.12.0
+	Needs:   3.16.0
 	Note: {
 		To test POST method from Rebol console, try this:
 		```
@@ -44,6 +44,11 @@ serve-http [
 	list-dir?:  true
 	allow-put: [%/upload/]
 	allow-delete: [%/upload/]
+	auth: compose/deep [
+		tokens: ["test" (checksum "TEST_TOKEN" 'sha256)]
+		users:  ["oldes" (probe make-password-hash/iterations "secret" 1000)]
+		paths:  [%/private/]
+	]
 	trust-ips: [127.0.0.1]
 	;- Server's actor functions                                                                  
 	actor: [

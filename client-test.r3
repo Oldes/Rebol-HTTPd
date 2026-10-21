@@ -2,7 +2,7 @@ Rebol [
 	Title:  "Test HTTPd Scheme (client)"
 	File:   %client-test.r3
 	Date:    21-Oct-2026
-	Version: 0.11.2
+	Version: 0.12.0
 	Note: {
 		To test POST method from Rebol console, try this:
 		```
@@ -312,23 +312,23 @@ foreach test [
 
 
 	;; PUT creates a new file (201), replaces it (204), fails on a missing directory (409)
-	[ assert-http/post 201 http://localhost:8081/upload/put-test.txt [PUT [] "hello"] ]
+	[ assert-http/post 201 http://localhost:8081/upload/put-test.txt [PUT [Authorization: "Bearer TEST_TOKEN"] "hello"] ]
 	[ "hello" == read/string %hosts/test/upload/put-test.txt ]
-	[ assert-http/post 204 http://localhost:8081/upload/put-test.txt [PUT [] "world"] ]
+	[ assert-http/post 204 http://localhost:8081/upload/put-test.txt [PUT [Authorization: "Basic b2xkZXM6c2VjcmV0"] "world"] ]
 	[ "world" == read/string %hosts/test/upload/put-test.txt ]
-	[ assert-http/post 409 http://localhost:8081/upload/missing-dir/x.txt [PUT [] "x"] ]
+	[ assert-http/post 409 http://localhost:8081/upload/missing-dir/x.txt [PUT [Authorization: "Bearer TEST_TOKEN"] "x"] ]
 	;; PUT outside of the allowed locations is forbidden
-	[ assert-http/post 403 http://localhost:8081/put-test.txt [PUT [] "x"] ]
-	[ assert-http/post 403 http://localhost:8081/upload/../put-test.txt [PUT [] "x"] ]
+	[ assert-http/post 403 http://localhost:8081/put-test.txt [PUT [Authorization: "Basic b2xkZXM6c2VjcmV0"] "x"] ]
+	[ assert-http/post 403 http://localhost:8081/upload/../put-test.txt [PUT [Authorization: "Bearer TEST_TOKEN"] "x"] ]
 	[ not exists? %hosts/test/put-test.txt ]
 
 	;; DELETE removes the file (204), then it's gone (404); directories are not deleted (409)
-	[ assert-http/post 204 http://localhost:8081/upload/put-test.txt [DELETE []] ]
+	[ assert-http/post 204 http://localhost:8081/upload/put-test.txt [DELETE [Authorization: "Bearer TEST_TOKEN"]] ]
 	[ not exists? %hosts/test/upload/put-test.txt ]
-	[ assert-http/post 404 http://localhost:8081/upload/put-test.txt [DELETE []] ]
-	[ assert-http/post 409 http://localhost:8081/upload/ [DELETE []] ]
+	[ assert-http/post 404 http://localhost:8081/upload/put-test.txt [DELETE [Authorization: "Basic b2xkZXM6c2VjcmV0"]] ]
+	[ assert-http/post 409 http://localhost:8081/upload/ [DELETE [Authorization: "Bearer TEST_TOKEN"]] ]
 	;; DELETE outside of the allowed locations is forbidden
-	[ assert-http/post 403 http://localhost:8081/xxx [DELETE []] ]
+	[ assert-http/post 403 http://localhost:8081/xxx [DELETE [Authorization: "Basic b2xkZXM6c2VjcmV0"]] ]
 
 	;; OPTIONS lists methods allowed for the path
 	[ "OPTIONS, GET, HEAD, POST, PUT, DELETE" = probe select second write/all http://localhost:8081/upload/x.txt [OPTIONS []] 'Allow ]
@@ -340,9 +340,25 @@ foreach test [
 		not find r "Content-Length"
 	] ]
 	;; PATCH without a handler -> 405
-	[ assert-http/post 405 http://localhost:8081/x.txt [PATCH [] "x"] ]
+	[ assert-http/post 405 http://localhost:8081/x.txt [PATCH [Authorization: "Bearer TEST_TOKEN"] "x"] ]
 
+	;; write methods require authentication
+	[ assert-http/post 401 http://localhost:8081/upload/a.txt [PUT [] "x"] ]
+	[ assert-http/post 401 http://localhost:8081/upload/a.txt [PUT [Authorization: "Bearer WRONG"] "x"] ]
+	[ assert-http/post 401 http://localhost:8081/upload/a.txt [PUT [Authorization: "Basic b2xkZXM6d3Jvbmc="] "x"] ] ;= oldes:wrong
+	[ not exists? %hosts/test/upload/a.txt ]
+	;; challenge lists both schemes
+	[ all [
+		block? r: write/all http://localhost:8081/upload/a.txt [DELETE []]
+		r/1 = 401
+		did find select r/2 'WWW-Authenticate "Bearer"
+		did find select r/2 'WWW-Authenticate "Basic"
+	] ]
+	;; protected path requires auth for any method
+	[ assert-http 401 http://localhost:8081/private/x ]
+	[ assert-http/post 404 http://localhost:8081/private/x [GET [Authorization: "Bearer TEST_TOKEN"]] ]
 
+	;-- stop --
 	[ print as-green "Stopping the server..." assert-http 200 http://localhost:8081/stop ]
 	;; server must not be reachable anymore
 	[ wait 0.25  error? try [read http://localhost:8081/] ]	

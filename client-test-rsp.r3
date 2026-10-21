@@ -1,6 +1,9 @@
 Rebol [
 	Title:  "Test HTTPd Scheme using RSP (client)"
 	File:   %client-test-rsp.r3
+	Date:    21-Oct-2026
+	Author: "Oldes"
+	Version: 0.12.0
 	Needs: 3.16.0
 ]
 

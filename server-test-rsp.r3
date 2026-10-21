@@ -1,9 +1,9 @@
 Rebol [
 	Title:  "Test HTTPd Scheme"
 	File:   %server-test-rsp.r3
-	Date:    5-Mar-2025
+	Date:    21-Oct-2026
 	Author: "Oldes"
-	Version: 0.9.0
+	Version: 0.12.0
 	Needs:   3.16.0
 ]
 

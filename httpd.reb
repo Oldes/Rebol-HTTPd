@@ -5,16 +5,18 @@ Rebol [
 	Date:    21-Oct-2026
 	Version: 0.12.0
 	Author: ["Andreas Bolka" "Christopher Ross-Gill" "Oldes"]
-	Exports: [serve-http http-server decode-target to-CLF-idate]
+	Exports: [serve-http http-server decode-target to-CLF-idate make-password-hash]
 	Home:    https://github.com/Oldes/Rebol-HTTPd
 	Rights:  http://opensource.org/licenses/Apache-2.0
 	Purpose: {
 		A Tiny Webserver Scheme for Rebol 3 (Oldes' branch)
 		Features:
-		* serve static files (GET, HEAD, POST, PUT, PATCH, DELETE and OPTIONS; large files sent in chunks
+		* serve static files (GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS); large files sent in chunks
 		* customizable request handling using _actors_ (per server)
 		* decoded request bodies (form-urlencoded, multipart, JSON, text),
 		  chunked uploads and `Expect: 100-continue`
+		* optional file upload (PUT) and removal (DELETE) in allowed locations
+		* authentication using Bearer tokens or Basic auth (PBKDF2 password hashes)
 		* keep-alive (HTTP/1.1 and HTTP/1.0) and pipelined requests
 		* RSP (Rebol Server Pages)
 		* WebSocket connections (text/binary messages, ping/pong)
@@ -204,6 +206,57 @@ to-CLF-idate: func [
 	]
 ]
 
+make-password-hash: function [
+	"Returns a salted PBKDF2 hash of a password (for `users` in the auth config)"
+	password [string!]
+	/iterations count [integer!] "Default 100000"
+][
+	count: any [count 100000]
+	salt: make binary! 16
+	loop 16 [append salt (random/secure 256) - 1]
+	ajoin [
+		"pbkdf2-sha256$" count #"$" enbase salt 64 #"$"
+		enbase pbkdf2 password salt count 32 'sha256 64
+	]
+]
+
+pbkdf2: function [
+;@@ https://github.com/Oldes/Rebol-PBKDF2
+    pass   [any-string! binary!] "Password"
+    salt   [any-string! binary!] "Salt value"
+    count  [integer!] "Number of iterations"
+    length [integer!] "Requested length of the result (key) in bytes"
+    method [word!]    "Checksum method to be used [sha1 sha256...]"
+][
+    ;; Convert input password and salt to binary format
+    pass: to binary! pass
+    salt: to binary! salt
+    ;; Initialize output buffer for the derived key
+    output: make binary! length
+    ;; Initialize last block with the salt
+    last: copy salt
+    ;; Determine the length of the hash output for the selected method
+    hash-len: select [sha1 20 sha224 28 sha256 32 sha384 48 sha512 64] :method
+    ;; Calculate the number of hash blocks needed to meet the requested length
+    block-cnt: round/ceiling (length / hash-len)
+
+    repeat i block-cnt [
+        ;; Write the salt and block index (as big-endian 32-bit) into last
+        binary/write last [BYTES :salt UI32BE :i]
+        ;; Compute the first hash value (U1) using the password
+        last: xorsum: checksum/with last method pass
+        ;; Perform additional iterations (U2, U3, ..., Ucount)
+        repeat j (count - 1) [
+            ;; Compute the next hash in the chain and XOR it with previous results
+            xorsum: xorsum xor (last: checksum/with last method pass)
+        ]
+        ;; Append the derived key fragment to the output buffer
+        append output xorsum
+    ]
+    ;; Crop the output to match the exact requested key length
+    copy/part output length
+]
+
 rsp-context: context [
 	ctx:  none
 	app:  none ;= shared application context (write via path: app/x: ...)
@@ -334,6 +387,45 @@ sys/make-scheme [
 
 		On-Accept: func [ctx [object!]][ true ]
 		On-Header: func [ctx [object!]][] ;= placeholder; user can use it for early request processing
+
+		On-Auth: func [
+			"Verifies request credentials; returns the user name, or NONE when not accepted"
+			ctx [object!]
+			/local auth value type cred key user pass stored
+		][
+			auth: ctx/config/auth
+			unless string? value: select ctx/inp/header 'Authorization [return none]
+			unless parse value [copy type: to #" " some #" " copy cred: to end][return none]
+			switch type [
+				"Bearer" [
+					if block? auth/tokens [
+						cred: checksum cred 'sha256
+						foreach [user stored] auth/tokens [
+							if stored == cred [return user]
+						]
+					]
+				]
+				"Basic" [
+					if block? auth/users [
+						;; PBKDF2 is slow by design, so verified credentials are cached
+						key: checksum value 'sha256
+						if user: select auth/cache key [return user]
+						all [
+							cred: attempt [to string! debase cred 64]
+							parse cred [copy user: to #":" skip copy pass: to end]
+							stored: select/case auth/users user
+							Verify-Password pass stored
+							(
+								if 1000 < length? auth/cache [clear auth/cache]
+								put auth/cache key user
+							)
+							return user
+						]
+					]
+				]
+			]
+			;= none
+		]
 
 		On-Get: func [
 			ctx [object!]
@@ -802,6 +894,50 @@ sys/make-scheme [
 		full
 	]
 
+	Verify-Password: function [
+		"Checks a password against a hash made by `make-password-hash`"
+		pass [string!] stored [string!]
+	][
+		all [
+			parse stored [
+				"pbkdf2-" copy method: to #"$" skip
+				copy count: to #"$" skip
+				copy salt:  to #"$" skip
+				copy hash:  to end
+			]
+			attempt [
+				hash: debase hash 64
+				hash == pbkdf2 pass debase salt 64 to integer! count length? hash to word! method
+			]
+		]
+	]
+
+	Auth-Required?: func [
+		"Returns TRUE if the request must be authenticated"
+		ctx [object!] /local auth
+	][
+		all [
+			auth: ctx/config/auth
+			ctx/inp/method <> "OPTIONS" ;; CORS preflight never carries credentials
+			any [
+				find auth/methods to word! ctx/inp/method
+				all [block? auth/paths Path-Allowed? auth/paths ctx/inp/target/file]
+			]
+			true
+		]
+	]
+
+	Auth-Challenge: func [
+		"Returns value for the `WWW-Authenticate` response header"
+		auth [object!]
+	][
+		ajoin [
+			if auth/tokens [ajoin [{Bearer realm="} auth/realm {"}]]
+			if all [auth/tokens auth/users][", "]
+			if auth/users  [ajoin [{Basic realm="} auth/realm {", charset="UTF-8"}]]
+		]
+	]
+
 	Path-Allowed?: func [
 		"Returns TRUE if the request path is in a location allowed by an allow-put/allow-delete setting"
 		allow [logic! block! none!] "TRUE, or block of allowed paths like [%/upload/]"
@@ -1112,6 +1248,15 @@ sys/make-scheme [
 									][
 										; on-header actor may be used for rewrite rules (redirection)
 										ctx/actor/on-header ctx
+										if all [
+											none? ctx/out/status
+											Auth-Required? ctx
+											none? ctx/user: ctx/actor/On-Auth ctx
+										][
+											ctx/state: 'error ;; don't keep the connection, a body may follow
+											out/status: 401 ; Unauthorized
+											out/header/WWW-Authenticate: Auth-Challenge ctx/config/auth
+										]
 									]
 								]
 								; if status is already defined (probably redirection), respond without reading
@@ -1389,6 +1534,7 @@ sys/make-scheme [
 			pending: none ; unprocessed input bytes to restore after a write
 			continued?: none ; `100 Continue` already sent for the current request
 			body-end: none   ; end of a chunked request body (for pipelining)
+			user: none       ; authenticated user (set by On-Auth)
 			started: stats/timer
 		]
 		;? port
@@ -1429,7 +1575,7 @@ sys/make-scheme [
 			foreach v ctx/inp [ctx/inp/:v: none]
 			foreach v ctx/out [ctx/out/:v: none]
 			ctx/out/Header: make map! 12
-			ctx/state: ctx/continued?: ctx/body-end: none
+			ctx/state: ctx/continued?: ctx/body-end: ctx/user: none
 			; set new timeout
 			ctx/timeout: now + to time! ctx/config/keep-alive/1 
 			either pending: ctx/pending [
@@ -1599,6 +1745,24 @@ serve-http: function [
 		spec/actor: none ;; not including actor in the config
 	]
 	append config: server/extra/config body-of spec
+
+	if block? config/auth [
+		config/auth: make object! compose [
+			realm:   (config/server-name)
+			tokens:  none ;= [name sha256-hash ...]
+			users:   none ;= [name pbkdf2-hash ...]
+			methods: [PUT PATCH DELETE]
+			paths:   none ;= [%/private/ ...] all methods require auth there
+			(config/auth)
+			cache:   make map! 16
+		]
+		foreach [name hash] any [config/auth/tokens []][
+			unless binary? hash [cause-error 'script 'invalid-arg reduce [hash]]
+		]
+		foreach [name hash] any [config/auth/users []][
+			unless string? hash [cause-error 'script 'invalid-arg reduce [hash]]
+		]
+	]
 
 	if file? file: config/log-access [
 		new: not exists? file

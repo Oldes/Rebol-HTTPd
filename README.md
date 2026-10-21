@@ -101,6 +101,7 @@ affect each other.
 | Actor | When it is called |
 |---|---|
 | `On-Accept` | A new connection arrives. Return `false` to refuse it (for example, by IP) |
+| `On-Auth` | Verifies credentials for requests that require authentication |
 | `On-Header` | The request header is parsed. Set `ctx/out/status` to answer right away (redirects, simple endpoints) |
 | `On-Get` | GET or HEAD request |
 | `On-Post` | POST request, with the body already decoded in `ctx/inp/content` |
@@ -156,6 +157,31 @@ code: serve-http [port: 8000 actor: [
 ```
 
 For a more complete setup, see [server-test.r3](server-test.r3).
+
+## Authentication
+
+Add an `auth` block to protect write methods (and optionally whole paths):
+
+```rebol
+serve-http [
+    root: %www/
+    allow-put: [%/upload/]
+    auth: [
+        tokens:  ["deploy" #{...}]             ;; name + SHA-256 of the token
+        users:   ["oldes" "pbkdf2-sha256$..."] ;; name + password hash
+        methods: [PUT PATCH DELETE]            ;; default
+        paths:   [%/private/]                  ;; any method requires auth here
+    ]
+]
+```
+
+* **Bearer tokens** (`Authorization: Bearer <token>`): store `checksum "my-token" 'sha256`, never the token itself.
+* **Basic auth** (user + password): store a hash made by `make-password-hash "my-password"`.
+* The authenticated name is available in handlers as `ctx/user`.
+* Override `On-Auth` to check credentials your own way. Return the user name, or `none` to refuse.
+* Responses sent directly from `On-Header` are not authenticated.
+
+Credentials are sent in clear text over plain HTTP. Run the server behind an HTTPS proxy (such as nginx), or only on localhost.
 
 ## RSP (Rebol Server Pages)
 
