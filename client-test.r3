@@ -211,6 +211,7 @@ log-start: any [size? %logs/test-errors.log 0]
 ;; directory with a file name needing escaping (for listing tests)
 make-dir/deep %hosts/test/listing/
 write as file! "hosts/test/listing/a&b #1.txt" "x"
+make-dir/deep %hosts/test/upload/
 
 print-hline
 print as-green "Launching the server..."
@@ -311,11 +312,15 @@ foreach test [
 
 
 	;; PUT creates a new file (201), replaces it (204), fails on a missing directory (409)
-	[ assert-http/post 201 http://localhost:8081/put-test.txt [PUT [] "hello"] ]
-	[ "hello" == read/string %hosts/test/put-test.txt ]
-	[ assert-http/post 204 http://localhost:8081/put-test.txt [PUT [] "world"] ]
-	[ "world" == read/string %hosts/test/put-test.txt ]
-	[ assert-http/post 409 http://localhost:8081/missing-dir/x.txt [PUT [] "x"] ]
+	[ assert-http/post 201 http://localhost:8081/upload/put-test.txt [PUT [] "hello"] ]
+	[ "hello" == read/string %hosts/test/upload/put-test.txt ]
+	[ assert-http/post 204 http://localhost:8081/upload/put-test.txt [PUT [] "world"] ]
+	[ "world" == read/string %hosts/test/upload/put-test.txt ]
+	[ assert-http/post 409 http://localhost:8081/upload/missing-dir/x.txt [PUT [] "x"] ]
+	;; PUT outside of the allowed locations is forbidden
+	[ assert-http/post 403 http://localhost:8081/put-test.txt [PUT [] "x"] ]
+	[ assert-http/post 403 http://localhost:8081/upload/../put-test.txt [PUT [] "x"] ]
+	[ not exists? %hosts/test/put-test.txt ]
 
 
 	[ print as-green "Stopping the server..." assert-http 200 http://localhost:8081/stop ]
@@ -350,7 +355,8 @@ print-hline
 
 delete as file! "hosts/test/listing/a&b #1.txt"
 delete %hosts/test/listing/
-delete %hosts/test/put-test.txt
+delete %hosts/test/upload/put-test.txt
+delete %hosts/test/upload/
 
 
 if fails > 0 [

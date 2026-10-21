@@ -307,7 +307,7 @@ sys/make-scheme [
 					index:       [%index.html %index.htm]
 					keep-alive:  true
 					list-dir?:   true
-					allow-put?:  false ; enables the default file upload by PUT
+					allow-put:   false ; TRUE, or block of allowed paths (relative to root) like [%/upload/]
 					server-name: "Rebol3-HTTPd"
 					trust-ips:   [127.0.0.1]
 					follow-symlinks?: false
@@ -476,15 +476,26 @@ sys/make-scheme [
 		]
 
 		On-Put: func [
-			"Default PUT handler: stores the body as a file in root (requires allow-put?)"
+			"Default PUT handler: stores the body as a file in root (requires allow-put)"
 			ctx [object!]
-			/local target follow path dir existed?
+			/local target allow p follow path dir existed?
 		][
 			target: ctx/inp/target
-			unless all [ctx/config/allow-put? ctx/config/root][
+			allow:  ctx/config/allow-put
+			unless all [allow ctx/config/root][
 				ctx/out/status: 405 ; Method Not Allowed
 				ctx/out/header/Allow: "GET, HEAD, POST"
 				exit
+			]
+			if block? allow [
+				;; cleaned path, so `/upload/../x` can't pass as `/upload/`
+				p: clean-path/only target/file
+				unless foreach dir allow [
+					if find/match/case p dir [break/return true]
+				][
+					ctx/out/status: 403 ; Forbidden
+					exit
+				]
 			]
 			follow: ctx/config/follow-symlinks?
 			;; the file may not exist yet, so check its parent directory as well

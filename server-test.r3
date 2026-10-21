@@ -42,7 +42,7 @@ serve-http [
 	log-access: %logs/test-access.log
 	log-errors: %logs/test-errors.log
 	list-dir?:  true
-	allow-put?: true
+	allow-put: [%/upload/]
 	trust-ips: [127.0.0.1]
 	;- Server's actor functions                                                                  
 	actor: [
