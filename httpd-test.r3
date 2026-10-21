@@ -160,8 +160,25 @@ foreach test [
 	print [as-yellow "Assert:" mold/flat test]
 	either attempt test [print as-green "OK"][++ fails print as-red "FAILED"]
 ]
+
+print-hline
+print as-yellow "[TEST] HTTPd deprecated http-server"
+srv3: http-server/no-wait/actor 8093 [On-Get: func [ctx][ctx/out/content: "a"]]
+srv4: http-server/no-wait 8094
+
+foreach test [
+	[ "a" == read http://localhost:8093/ ]
+	;; second server must not inherit actors from the first call (root-less -> 404)
+	[ error? try [read http://localhost:8094/] ]
+][
+	print [as-yellow "Assert:" mold/flat test]
+	either attempt test [print as-green "OK"][++ fails print as-red "FAILED"]
+]
+
 close srv1
 close srv2
+close srv3
+close srv4
 
 
 print-hline

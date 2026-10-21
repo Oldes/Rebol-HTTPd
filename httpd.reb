@@ -399,7 +399,7 @@ sys/make-scheme [
 					]
 				]
 			][
-				ctx/ctor/On-Not-Found ctx target
+				ctx/actor/On-Not-Found ctx target
 			]
 		]
 
@@ -1269,7 +1269,9 @@ http-server: function [
 	/no-wait "Will not enter wait loop"
 ][
 	sys/log/error 'HTTPD "`http-server` function is deprecated, use `serve-http` instead!"
-	spec: either config [to block! spec][[]]
+	spec: either config [
+		either block? spec [copy spec][to block! spec]
+	][	copy [] ]
 	if actor [extend spec 'actor actions]
 	extend spec 'port port
 	serve-http/:no-wait spec
