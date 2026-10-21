@@ -6,12 +6,12 @@ Rebol [
 
 import 'json
 
-print-horizontal-line
+print-hline
 print as-green "Launching the server..."
 pid: launch %server-test-rsp.r3
 wait 0:0:1
 
-print-horizontal-line
+print-hline
 print as-green "Doing the tests..."
 
 fails: 0
@@ -26,8 +26,10 @@ foreach test [
 	[ "124" == read url/test_05.rsp ]
 	[ "212456" == read url/test_06.rsp ]
 	[ "<%= 1 + 1 %>" == read url/test_07.rsp ]
+	[ "AxB" == read url/test_08.rsp ]
+	[ did find read url/test_09.rsp "RSP include not found" ]
 ][
-	print-horizontal-line
+	print-hline
 	print [as-yellow "Assert:" mold/flat test]
 	result: try :test 
 	print "------"
@@ -40,7 +42,7 @@ foreach test [
 	print ""
 ]
 
-print-horizontal-line
+print-hline
 print as-green "Stopping the server..."
 access-os/set 'pid :pid
 wait 0:0:1

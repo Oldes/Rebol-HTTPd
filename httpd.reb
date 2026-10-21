@@ -216,8 +216,12 @@ rsp-context: context [
 			2 skip [
 				#"@" copy code: to "%>" 2 skip (
 					try/with [
-						file? file: transcode/one code
-						exists? file
+						unless all [
+							file? file: transcode/one code
+							exists? file
+						][
+							do make error! ajoin ["RSP include not found: " mold :file]
+						]
 						append out read/string file
 					] :probe
 				)
