@@ -77,6 +77,27 @@ foreach test [
 
 
 print-hline
+print as-yellow "[TEST] HTTPd Decode-Chunked"
+dc: :system/schemes/httpd/Decode-Chunked
+
+foreach test [
+	[ none? probe dc probe to binary! "5^M^/hel" ] ;; incomplete
+	[ none? dc to binary! "5" ]        ;; size line incomplete
+	[ "hello world" == to string! first dc to binary! "5^M^/hello^M^/6^M^/ world^M^/0^M^/^M^/" ]
+	[ tail? second dc to binary! "1^M^/a^M^/0^M^/^M^/" ]
+	;; end position points to the next (pipelined) request
+	[ "GET" == to string! copy/part second dc to binary! "1^M^/a^M^/0^M^/^M^/GET" 3 ]
+	;; chunk extension and trailer are ignored
+	[ "a" == to string! first dc to binary! "1;ext=1^M^/a^M^/0^M^/X-T: 1^M^/^M^/" ]
+	[ 'invalid = dc to binary! "x^M^/" ]
+	[ 'invalid = dc to binary! "1^M^/ab0^M^/^M^/" ] ;; missing CRLF after chunk
+][
+	print [as-yellow "Assert:" mold/flat test]
+	either attempt test [print as-green "OK"][++ fails print as-red "FAILED"]
+]
+
+
+print-hline
 print as-yellow "[TEST] HTTPd Safe-Path"
 safe-path: :system/schemes/httpd/Safe-Path
 ;; on Windows %/srv/ would be a UNC path (network lookup), so use a local drive

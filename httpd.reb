@@ -408,17 +408,43 @@ sys/make-scheme [
 			true
 		]
 
-		On-Read-Post: func[ctx [object!] /local path content header length type temp target follow][
-			;@@ TODO: handle `Expect` header: https://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.20
+		On-Read-Post: func[ctx [object!] /local path content header length type temp target follow res limit][
 			header: ctx/inp/header
 			length: select header 'Content-Length
 			unless find header 'Content-Type [
 				;make sure there is any Content-Type
 				extend header 'Content-Type "application/octet-stream"
 			]
+			content: ctx/inp/content
+			if "chunked" = select header 'Transfer-Encoding [
+				res: Decode-Chunked content
+				limit: ctx/config/max-content-length
+				case [
+					word? res [ ;; invalid chunk framing
+						ctx/state: 'error
+						ctx/out/status: 400 ; Bad Request
+						exit
+					]
+					none? res [ ;; incomplete
+						either all [limit limit < length? content][
+							ctx/state: 'error
+							ctx/out/status: 413 ; Payload Too Large
+						][	ctx/state: 'read-data ]
+						exit
+					]
+					all [limit limit < length? res/1][
+						ctx/state: 'error
+						ctx/out/status: 413
+						exit
+					]
+				]
+				content: res/1
+				ctx/body-end: res/2 ;; for pipelining
+				length: none
+			]
 			either all [
 				integer? length
-				length > length? content: ctx/inp/content
+				length > length? content
 			][
 				ctx/state: 'read-data
 			][
@@ -716,6 +742,33 @@ sys/make-scheme [
 		normal-chars: #(bitset! not #{000000002200000A}) ;= complement charset {&<>"}
 	]
 
+	Decode-Chunked: function/with [
+		"Decodes chunked transfer-encoded data; returns [body end], NONE if incomplete, or 'invalid"
+		data [binary!]
+	][
+		out: make binary! length? data
+		pos: data
+		forever [
+			if tail? pos [return none]
+			unless parse pos [copy size: 1 8 hex-digits to end][return 'invalid]
+			unless p: find/tail pos CRLF [return none] ;; size line incomplete (may have extensions)
+			n: 0 foreach c size [n: n * 16 + either c > 64 [(c and 7) + 9][c - 48]] ;; hex -> integer
+			pos: p
+			if zero? n [
+				;; optional trailer fields end with an empty line
+				return either parse pos [[#{0D0A} | thru #{0D0A0D0A}] e: to end][
+					reduce [out e]
+				][	none ] ;; incomplete
+			]
+			if (length? pos) < (n + 2) [return none]
+			append out copy/part pos n
+			pos: skip pos n
+			unless pos: find/match/tail pos #{0D0A} [return 'invalid]
+		]
+	][
+		hex-digits: #(bitset! #{000000000000FFC07E0000007E}) ;= charset "0123456789abcdefABCDEF"
+	]
+
 	Respond: function [port [port!]][
 		ctx: port/extra
 		out: ctx/out
@@ -929,6 +982,7 @@ sys/make-scheme [
 								if all [ctx/state <> 'error object? inp/header][
 									len: select inp/header 'Content-Length
 									end: case [
+										ctx/body-end        [ctx/body-end]
 										integer? len        [skip header-end len]
 										inp/method = "POST" [tail header-end] ;; no length: all data is content
 										'else               [header-end]
@@ -1161,6 +1215,7 @@ sys/make-scheme [
 			requests: 0   ; number of already served requests per connection
 			pending: none ; unprocessed input bytes to restore after a write
 			continued?: none ; `100 Continue` already sent for the current request
+			body-end: none   ; end of a chunked request body (for pipelining)
 			started: stats/timer
 		]
 		;? port
@@ -1201,7 +1256,7 @@ sys/make-scheme [
 			foreach v ctx/inp [ctx/inp/:v: none]
 			foreach v ctx/out [ctx/out/:v: none]
 			ctx/out/Header: make map! 12
-			ctx/state: ctx/continued?: none
+			ctx/state: ctx/continued?: ctx/body-end: none
 			; set new timeout
 			ctx/timeout: now + to time! ctx/config/keep-alive/1 
 			either pending: ctx/pending [
