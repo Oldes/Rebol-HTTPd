@@ -48,6 +48,20 @@ foreach test [
 
 
 print-hline
+print as-yellow "[TEST] HTTPd decode-target"
+
+foreach test [
+	;; '+' in query is a space, encoded '+' stays '+'
+	[ [a: "x y" b: "1+1"] == select decode-target "/p?a=x+y&b=1%2B1" 'values ]
+	;; '+' in path is literal
+	[ %/a+b == select decode-target "/a+b?x=1" 'file ]
+][
+	print [as-yellow "Assert:" mold/flat test]
+	either attempt test [print as-green "OK"][++ fails print as-red "FAILED"]
+]
+
+
+print-hline
 if fails > 0 [
 	print as-red [fails "tests have failed!"]
 	quit/return fails

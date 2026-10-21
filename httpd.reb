@@ -70,8 +70,8 @@ decode-target: wrap [
 			any [
 				copy key some chars #"=" copy val any chars (
 					unless empty? val [
-						append result/values to set-word! to string! dehex key
-						append result/values to string! dehex val
+						append result/values to set-word! to string! dehex/uri key
+						append result/values to string! dehex/uri val
 					]
 				) opt #"&"
 				| #"&"
