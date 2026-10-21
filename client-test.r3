@@ -243,6 +243,8 @@ foreach test [
 
 	;; ping + two text frames in one write: pong first, then both echoes
 	[ #{8A0170810161810162} == ws-request #{898100000000708181000000006181810000000062} 9 ]
+	;; frame declaring a too large payload (2^40 bytes) -> close frame with 1009, no payload read
+	[ #{880203F1} == ws-request #{81FF0000010000000000000000} 4 ]
 
 	;; listing escapes names in text and encodes them in links
 	[ all [

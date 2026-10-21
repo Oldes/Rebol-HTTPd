@@ -3,7 +3,7 @@ Rebol [
 	Type:    module
 	Name:    httpd
 	Date:    21-Oct-2026
-	Version: 0.11.2
+	Version: 0.12.0
 	Author: ["Andreas Bolka" "Christopher Ross-Gill" "Oldes"]
 	Exports: [serve-http http-server decode-target to-CLF-idate]
 	Home:    https://github.com/Oldes/Rebol-HTTPd
@@ -11,19 +11,27 @@ Rebol [
 	Purpose: {
 		A Tiny Webserver Scheme for Rebol 3 (Oldes' branch)
 		Features:
-		* handle basic POST, GET and HEAD methods
-		* send large files in chunks (using a file port)
-		* using _actors_ for main actions which may be customized
-		* implemented `keep-alive` behaviour
-		* sends `Not modified` response if file was not modified in given time
-		* client can stop the server
+		* serve static files (GET, HEAD, POST); large files sent in chunks
+		* customizable request handling using _actors_ (per server)
+		* decoded request bodies (form-urlencoded, multipart, JSON, text),
+		  chunked uploads and `Expect: 100-continue`
+		* keep-alive (HTTP/1.1 and HTTP/1.0) and pipelined requests
+		* RSP (Rebol Server Pages)
+		* WebSocket connections (text/binary messages, ping/pong)
+		* request paths restricted to the root; request size limits
+		* client can stop the server and return data (useful for OAuth2)
 	}
 	TODO: {
 		* support for multidomain serving using `Host` header field
-		* add support for other methods - PUT, DELETE, TRACE, CONNECT, OPTIONS?
-		* better error handling
+		* default handling of other methods - PUT, DELETE, OPTIONS...
+		* size limit for WebSocket messages
+		* timeout for slow clients (whole request, not per read)
+		* assembling fragmented WebSocket messages
+		* optional `Origin` check for WebSocket upgrades
+		* request body charsets other than UTF-8
+		* range requests (206 Partial Content), response compression
 	}
-	Usage: {Check %server-test.r3 script how to start a simple server}
+	Usage: {See README.md and %server-test.r3 script how to start a server}
 	History: [
 		04-Nov-2009 "Andreas Bolka" {A Tiny HTTP Server
 		https://github.com/earl/rebol3/blob/master/scripts/shttpd.r}
@@ -37,8 +45,9 @@ Rebol [
 		09-May-2023 "Oldes" {Root-less configuration possibility (default)}
 		14-Dec-2023 "Oldes" {Deprecated the `http-server` function in favor of `serve-http` with a different configuration input}
 		06-Mar-2025 "Oldes" {Initial implementation of RSP (Rebol Server Pages)}
+		21-Oct-2026 "Oldes" {Security and protocol fixes: path checks, request limits, chunked uploads, 100-continue, pipelining, HTTP/1.0 keep-alive, WebSocket ping and binary frames, per-server actors, request-local RSP variables}
 	]
-	Needs: [3.11.0 mime-types]
+	Needs: [3.16.0 mime-types] ; uses #(...) construction syntax
 ]
 
 append system/options/log [httpd: 1]
@@ -304,6 +313,7 @@ sys/make-scheme [
 					follow-symlinks?: false
 					max-header-size:    32768    ; bytes, NONE = unlimited
 					max-content-length: 10485760 ; bytes (10MB), NONE = unlimited
+					max-websocket-frame: 1048576 ; bytes (1MB), NONE = unlimited
 				]
 			]
 			port/state: port/extra/subport/extra/clients
@@ -1118,6 +1128,16 @@ sys/make-scheme [
 								data: skip data 8
 							]
 						]
+						;; reject oversized frames before buffering their payload
+						if all [
+							limit: ctx/config/max-websocket-frame
+							len > limit
+						][
+							log-more ["WS frame too large:^[[22m" len]
+							ctx/state: 'closing
+							write port WS-Encode-Frame/op #{03F1} 8 ;; close frame, 1009 = message too big
+							exit
+						]
 						;; mask (if any) + payload must be fully buffered before we touch it
 						if (length? data) < (len + pick [4 0] mask?) [break]
 						data: truncate data ;; removes already processed bytes from the head
@@ -1172,11 +1192,16 @@ sys/make-scheme [
 				]
 			]
 			WROTE [
-				if ctx/pending [
-					port/data: ctx/pending ;; next read appends to the partial frame
-					ctx/pending: none
+				either ctx/state = 'closing [
+					;; close frame sent, drop the connection
+					Awake-Websocket make event! [type: 'CLOSE port: port]
+				][
+					if ctx/pending [
+						port/data: ctx/pending ;; next read appends to the partial frame
+						ctx/pending: none
+					]
+					read port
 				]
-				read port
 			]
 			CLOSE [
 				log-more ["Closing:^[[22m" ctx/remote]
