@@ -66,7 +66,8 @@ foreach test [
 	[ [b: "2"] == select decode-target "/p?=1&b=2" 'values ]
 	;; key which is not a valid word doesn't fail the decoding
 	[ 4 = length? select decode-target "/p?1=x&b=2" 'values ]
-	[ #{66} == select decode-target "/p?a=1#f" 'fragment ]
+	[ "f" == select decode-target "/p?a=1#f" 'fragment ]
+	[ "f" == select decode-target "/p#f" 'fragment ]
 ][
 	print [as-yellow "Assert:" mold/flat test]
 	either attempt test [print as-green "OK"][++ fails print as-red "FAILED"]

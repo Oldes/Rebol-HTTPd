@@ -65,7 +65,7 @@ decode-target: wrap [
 			opt [
 				copy val any chars (result/file: val) [
 					  #"?" 
-					| #"#" copy val to end (result/fragment: dehex val)
+					| #"#" copy val to end (result/fragment: to string! dehex val)
 					| end
 				] 
 			]
@@ -78,7 +78,7 @@ decode-target: wrap [
 				)
 				| #"=" any val-chars ;; pair without a key
 				| #"&"
-				| #"#" copy val to end (result/fragment: dehex val)
+				| #"#" copy val to end (result/fragment: to string! dehex val)
 			]
 		]
 		result/file: to file! dehex either all [
