@@ -701,6 +701,7 @@ sys/make-scheme [
 				any [none? ips: ctx/config/trust-ips find ips remote-ip]
 				remote-ip: :ip
 			]
+			;? ctx/inp
 			msg: ajoin [
 				remote-ip
 				{ - - [} to-CLF-idate now {] "}
@@ -770,13 +771,9 @@ sys/make-scheme [
 								log-more ["Request header:^[[22m" ctx/inp/method mold ctx/inp/header]
 								; on-header actor may be used for rewrite rules (redirection)
 								actor/on-header ctx
-								if ctx/out/status [
-								; if status is defined (probably redirection), than we can send a response now
-									respond port
-									break
-								]
 							]
-							actor/on-read port/extra
+							; if status is already defined (probably redirection), respond without reading
+							unless ctx/out/status [actor/on-read port/extra]
 						][
 							log-error system/state/last-error
 							ctx/state: 'error

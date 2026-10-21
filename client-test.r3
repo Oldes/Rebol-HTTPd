@@ -47,6 +47,8 @@ assert-head: func[
 	]
 ]
 
+log-start: any [size? %logs/test-errors.log 0]
+
 print-hline
 print as-green "Launching the server..."
 pid: launch %server-test.r3
@@ -64,6 +66,7 @@ foreach test [
 	[ assert-http      404 http://localhost:8081/xxx         ]
 	[ assert-http      200 http://localhost:8081/form.htm    ]
 	[ assert-http      200 http://localhost:8081/humans.txt  ]
+	[ assert-http      200 http://localhost:8081/plain/      ]
 	[ assert-http/post 200 http://localhost:8081 {msg=hello} ]
 	[ assert-http/post 200 http://localhost:8081 [post [user-agent: "UA"] "hello"] ]
 	[ assert-http/post 200 http://localhost:8081/api/v2/do #[token: "SOME_SECRET" code: "[1 + 1]"] ]
@@ -88,6 +91,13 @@ foreach test [
 ]
 
 print-hline
+;; an early response from On-Header must not be followed by a second 500 response
+if find skip read %logs/test-errors.log log-start " 500 " [
+	++ fails
+	print as-red "FAILED: unexpected 500 response in error log"
+]
+print-hline
+
 print as-green "Stopping the server..."
 access-os/set 'pid :pid
 wait 0:0:1
