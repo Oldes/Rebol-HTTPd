@@ -55,6 +55,18 @@ foreach test [
 	[ [a: "x y" b: "1+1"] == select decode-target "/p?a=x+y&b=1%2B1" 'values ]
 	;; '+' in path is literal
 	[ %/a+b == select decode-target "/a+b?x=1" 'file ]
+	;; key without `=` doesn't stop parsing
+	[ [flag: "" a: "1"] == select decode-target "/p?flag&a=1" 'values ]
+	;; empty values are kept
+	[ [a: "" b: "2"] == select decode-target "/p?a=&b=2" 'values ]
+	;; `=` and `?` are valid inside a value
+	[ [a: "b=c" d: "1"] == select decode-target "/p?a=b=c&d=1" 'values ]
+	[ [a: "x?y"] == select decode-target "/p?a=x?y" 'values ]
+	;; pair without a key is skipped
+	[ [b: "2"] == select decode-target "/p?=1&b=2" 'values ]
+	;; key which is not a valid word doesn't fail the decoding
+	[ 4 = length? select decode-target "/p?1=x&b=2" 'values ]
+	[ #{66} == select decode-target "/p?a=1#f" 'fragment ]
 ][
 	print [as-yellow "Assert:" mold/flat test]
 	either attempt test [print as-green "OK"][++ fails print as-red "FAILED"]

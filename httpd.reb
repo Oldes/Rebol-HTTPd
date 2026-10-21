@@ -51,6 +51,8 @@ append system/options/log [httpd: 1]
 decode-target: wrap [
 	control: charset [#"?" #"&" #"=" #"#"]
 	chars: complement control
+	key-chars: complement charset "&=#"
+	val-chars: complement charset "&#"
 	func [
 		"Splits target into file part and key/pair query values if any"
 		target [file! string! binary! none!]
@@ -68,12 +70,13 @@ decode-target: wrap [
 				] 
 			]
 			any [
-				copy key some chars #"=" copy val any chars (
-					unless empty? val [
-						append result/values to set-word! to string! dehex/uri key
-						append result/values to string! dehex/uri val
-					]
-				) opt #"&"
+				copy key some key-chars [#"=" copy val any val-chars | (val: none)] (
+					key: to string! dehex/uri key
+					;; keys which are not valid words are kept as strings
+					append result/values any [attempt [to set-word! key] key]
+					append result/values either val [to string! dehex/uri val][copy ""]
+				)
+				| #"=" any val-chars ;; pair without a key
 				| #"&"
 				| #"#" copy val to end (result/fragment: dehex val)
 			]
@@ -239,7 +242,7 @@ rsp-context: context [
 						code: transcode code
 						;; page set-words are request-local (added to page in one call)
 						unless empty? words: collect-words/set/deep/ignore code words-of page [
-							vals: make block! 2 * length? words
+							vals: clear []
 							foreach w words [repend vals [to set-word! w #(none)]]
 							append page vals
 						]
