@@ -280,6 +280,7 @@ sys/make-scheme [
 					list-dir?:   true
 					server-name: "Rebol3-HTTPd"
 					trust-ips:   [127.0.0.1]
+					follow-symlinks?: false
 				]
 			]
 			port/state: port/extra/subport/extra/clients
@@ -303,14 +304,15 @@ sys/make-scheme [
 
 		On-Get: func [
 			ctx [object!]
-			/local target path info index modified If-Modified-Since
+			/local target path info index modified If-Modified-Since follow
 		][
 			target: ctx/inp/target
 			unless ctx/config/root [
 				Actor/On-Not-Found ctx target
 				exit
 			]
-			unless path: Safe-Path ctx/config/root target/file [
+			follow: ctx/config/follow-symlinks?
+			unless path: Safe-Path/:follow ctx/config/root target/file [
 				Actor/On-Not-Found ctx target
 				exit
 			]
@@ -372,7 +374,7 @@ sys/make-scheme [
 			true
 		]
 
-		On-Read-Post: func[ctx [object!] /local path content header length type temp target][
+		On-Read-Post: func[ctx [object!] /local path content header length type temp target follow][
 			;@@ TODO: handle `Expect` header: https://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.20
 			header: ctx/inp/header
 			length: select header 'Content-Length
@@ -415,7 +417,8 @@ sys/make-scheme [
 					ctx/config/root
 				][
 					target: ctx/inp/target
-					either path: Safe-Path ctx/config/root target/file [
+					follow: ctx/config/follow-symlinks?
+					either path: Safe-Path/:follow ctx/config/root target/file [
 						target/file: path
 						ctx/out/header/Date: to-idate/gmt now
 						ctx/out/status: 200
@@ -621,7 +624,9 @@ sys/make-scheme [
 
 	Safe-Path: func [
 		"Joins a request path with root; returns NONE if it could escape the root"
-		root [file!] file [file!]
+		root [file!] "Must be canonical (from to-real-file)"
+		file [file!]
+		/follow "Allow symbolic links that resolve outside of root"
 		/local p full real
 	][
 		;; backslash is a separator on Windows; NUL truncates paths in the OS layer
@@ -633,7 +638,7 @@ sys/make-scheme [
 		if #"/" == first p [p: next p]
 		full: join root p
 		;; resolve symlinks; NONE means the file doesn't exist (POSIX) -> let caller 404
-		if real: to-real-file full [
+		if all [not follow real: to-real-file full][
 			if dir? full [real: dirize real] ;; POSIX result has no trailing slash
 			unless find/match real root [return none]
 		]
@@ -1175,7 +1180,7 @@ serve-http: function [
 ][
 	case [
 		integer? port: spec [
-			spec: make map! reduce/no-set [port: spec root: what-dir]
+			spec: make map! reduce/no-set [port: spec root: dirize to-real-file what-dir]
 		]
 		file? spec [
 			root: dirize to-real-file clean-path spec

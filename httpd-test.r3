@@ -88,6 +88,36 @@ foreach test [
 
 
 print-hline
+print as-yellow "[TEST] HTTPd Safe-Path symlinks"
+either system/platform = 'Windows [
+	print "skipped on Windows"
+][
+	base: join what-dir %tmp-safe-path/
+	make-dir/deep base/www
+	make-dir/deep base/outside
+	write base/outside/secret.txt "x"
+	write base/www/ok.txt "y"
+	call/shell/wait "cd tmp-safe-path/www && ln -s ../outside out && ln -s ok.txt alias.txt"
+	root: to-real-file base/www
+
+	foreach test [
+		[ (join root %ok.txt) == safe-path root %/ok.txt ]
+		;; link inside root is allowed
+		[ (join root %alias.txt) == safe-path root %/alias.txt ]
+		;; link leading outside root is blocked by default...
+		[ none? safe-path root %/out/secret.txt ]
+		[ none? safe-path root %/out/ ]
+		;; ...unless following is allowed
+		[ (join root %out/secret.txt) == safe-path/follow root %/out/secret.txt ]
+	][
+		print [as-yellow "Assert:" mold/flat test]
+		either attempt test [print as-green "OK"][++ fails print as-red "FAILED"]
+	]
+	call/shell/wait "rm -rf tmp-safe-path"
+]
+
+
+print-hline
 if fails > 0 [
 	print as-red [fails "tests have failed!"]
 	quit/return fails
