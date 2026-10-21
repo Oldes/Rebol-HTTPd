@@ -657,6 +657,25 @@ sys/make-scheme [
 		ajoin ["HTTP/" version #" " status #" " any [status-codes/:status "Unknown"] CRLF]
 	]
 
+	Keep-Alive?: func [
+		"Returns TRUE if the client connection should be kept open after the current request"
+		ctx [object!]
+		/local ka h conn
+	][
+		all [
+			block? ka: ctx/config/keep-alive ;= [timeout max-requests] (normalized in Respond)
+			not ctx/done?                    ; server is going to stop
+			ctx/state <> 'error              ; after 413/431/500 the input stream is unreliable
+			ctx/requests + 1 < ka/2          ; limit to max requests
+			object? h: ctx/inp/header
+			conn: any [select h 'Connection ""]
+			either ctx/inp/version = "1.0" [
+				find conn "keep-alive"       ; HTTP/1.0: close unless asked to keep
+			][	not find conn "close" ]      ; HTTP/1.1: keep unless asked to close
+			true
+		]
+	]
+	
 	Safe-Path: func [
 		"Joins a request path with root; returns NONE if it could escape the root"
 		root [file!] "Must be canonical (from to-real-file)"
@@ -741,14 +760,18 @@ sys/make-scheme [
 				out/content: none
 			]
 
-			if keep-alive: ctx/config/keep-alive [
-				if logic? keep-alive  [
+			if logic? keep-alive: ctx/config/keep-alive [
+				if keep-alive [
 					; using defaults
-					ctx/config/keep-alive:
-					keep-alive: [15 100] ; [timeout max-requests]
+					ctx/config/keep-alive: [15 100] ; [timeout max-requests]
 				]
+			]
+			either Keep-Alive? ctx [
+				keep-alive: ctx/config/keep-alive
 				ctx/out/header/Connection: "keep-alive"
 				ctx/out/header/Keep-Alive: ajoin ["timeout=" keep-alive/1 ", max=" keep-alive/2]
+			][
+				ctx/out/header/Connection: "close"
 			]
 			out/header/Server: ctx/config/server-name
 		]
@@ -1140,15 +1163,11 @@ sys/make-scheme [
 		clients: ctx/parent/extra/clients
 		keep-alive: ctx/config/keep-alive
 		
-		ctx/requests: ctx/requests + 1
 		either all [
-			keep-alive
-			not ctx/done?  ; server is going to stop, don't keep the connection
-			ctx/state <> 'error ; after 413/431/500 the input stream is unreliable
 			open? port
-			ctx/requests < keep-alive/2 ; limit to max requests
-			"close" <> select port/extra/inp/Header 'Connection ; client don't want or cannot handle persistent connection
+			Keep-Alive? ctx
 		][
+			ctx/requests: ctx/requests + 1
 			log-more ["Keep-alive:^[[22m" ctx/remote "requests:" ctx/requests]
 			; reset client state
 			foreach v ctx/inp [ctx/inp/:v: none]

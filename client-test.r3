@@ -196,6 +196,22 @@ foreach test [
 		(n: 0  parse r [any [thru "HTTP/1.1 200 " (++ n)]]  n = 100)
 	] ]
 
+	;; HTTP/1.0 without keep-alive request is closed right after the response
+	[ all [
+		binary? r: raw-request "GET /plain/ HTTP/1.0^M^/Host: x^M^/^M^/"
+		did find r "Connection: close"
+	] ]
+	;; HTTP/1.0 asking for keep-alive gets it; the next request without it closes
+	[ all [
+		binary? r: raw-request ajoin [
+			"GET /plain/ HTTP/1.0^M^/Host: x^M^/Connection: keep-alive^M^/^M^/"
+			"GET /plain/ HTTP/1.0^M^/Host: x^M^/^M^/"
+		]
+		(n: 0  parse r [any [thru "HTTP/1.0 200 " (++ n)]]  n = 2)
+		did find r "Connection: keep-alive"
+		did find r "Connection: close"
+	] ]
+
 	[ print as-green "Stopping the server..." assert-http 200 http://localhost:8081/stop ]
 	;; server must not be reachable anymore
 	[ wait 0.25  error? try [read http://localhost:8081/] ]	
