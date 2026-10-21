@@ -164,6 +164,32 @@ raw-request: function [
 	result
 ]
 
+slow-request: function [
+	"Sends request in two parts with a pause between them; returns the response"
+	part1 [string!] pause [time! number!] part2 [string!]
+][
+	result: none
+	conn: open tcp://127.0.0.1:8081
+	conn/awake: func [event /local port][
+		port: event/port
+		switch event/type [
+			lookup  [open port]
+			connect [return true]
+			wrote   [return true]
+			read    [result: copy port/data read port]
+			close   [return true]
+		]
+		false
+	]
+	wait [conn 5]                ;; connected
+	write conn part1 wait [conn 5]
+	wait pause
+	write conn part2 wait [conn 5]
+	read conn wait [conn 5]      ;; response (until closed)
+	close conn
+	result
+]
+
 expect-continue-test: function [
 	"Sends POST header with `Expect: 100-continue`, the body only after `100 Continue`"
 ][
@@ -358,6 +384,15 @@ foreach test [
 	[ assert-http 401 http://localhost:8081/private/x ]
 	[ assert-http/post 404 http://localhost:8081/private/x [GET [Authorization: "Bearer TEST_TOKEN"]] ]
 
+
+	;; header completed after header-timeout -> 408
+	[ did find/match slow-request "GET / HTTP/1.1^M^/Host: x^M^/" 3 "^M^/" "HTTP/1.1 408 " ]
+	;; body completed after body-timeout -> 408
+	[ did find/match slow-request
+		"POST / HTTP/1.1^M^/Host: x^M^/Content-Type: text/plain^M^/Content-Length: 5^M^/^M^/he" 3 "llo"
+		"HTTP/1.1 408 "
+	]
+	
 	;-- stop --
 	[ print as-green "Stopping the server..." assert-http 200 http://localhost:8081/stop ]
 	;; server must not be reachable anymore

@@ -25,7 +25,6 @@ Rebol [
 	}
 	TODO: {
 		* support for multidomain serving using `Host` header field
-		* timeout for slow clients (whole request, not per read)
 		* assembling fragmented WebSocket messages
 		* optional `Origin` check for WebSocket upgrades
 		* request body charsets other than UTF-8
@@ -367,6 +366,8 @@ sys/make-scheme [
 					max-header-size:    32768    ; bytes, NONE = unlimited
 					max-content-length: 10485760 ; bytes (10MB), NONE = unlimited
 					max-websocket-frame: 1048576 ; bytes (1MB), NONE = unlimited
+					header-timeout: 0:0:10 ; complete request header must arrive in time, NONE = unlimited
+					body-timeout:   0:1:0  ; complete request body must arrive in time, NONE = unlimited
 				]
 			]
 			port/state: port/extra/subport/extra/clients
@@ -1205,98 +1206,114 @@ sys/make-scheme [
 			switch event/type [
 				READ [
 					log-more ["bytes:^[[1m" length? port/data]
+					;; first bytes of a new request: start the header deadline
+					if all [none? ctx/state none? ctx/deadline t: ctx/config/header-timeout][
+						ctx/deadline: now + t
+					]
 					header-end: find/tail port/data CRLF2BIN
-					either all [
-						none? ctx/state ;; still reading the request header
-						limit: ctx/config/max-header-size
-						limit < either header-end [(index? header-end) - 1][length? port/data]
-					][
-						log-more ["Request header too large:^[[22m" ctx/remote]
-						inp/version: any [inp/version "1.1"]
-						ctx/state: 'error
-						out/status: 431 ; Request Header Fields Too Large
-						respond port
-					][
-						either header-end [
-							try/with [
-								if none? ctx/state [
-									with inp [
-										parse copy/part port/data header-end [
-											copy method some chars-method some space
-											copy target some chars        some space
-											"HTTP/" copy version some chars thru CRLF
-											copy header to end
-											(
-												method:  to string! method
-												target:  decode-target target
-												version: to string! version
-												header:  construct header
-												try [header/Content-Length: to integer! header/Content-Length]
-											)
-										]
-										content: header-end
-									]
-									log-more ["Request header:^[[22m" ctx/inp/method mold ctx/inp/header]
-									either all [
-										integer? len: select inp/header 'Content-Length
-										limit: ctx/config/max-content-length
-										len > limit
-									][
-										log-more ["Request content too large:^[[22m" len]
-										ctx/state: 'error
-										out/status: 413 ; Payload Too Large
-									][
-										; on-header actor may be used for rewrite rules (redirection)
-										ctx/actor/on-header ctx
-										if all [
-											none? ctx/out/status
-											Auth-Required? ctx
-											none? ctx/user: ctx/actor/On-Auth ctx
-										][
-											ctx/state: 'error ;; don't keep the connection, a body may follow
-											out/status: 401 ; Unauthorized
-											out/header/WWW-Authenticate: Auth-Challenge ctx/config/auth
-										]
-									]
-								]
-								; if status is already defined (probably redirection), respond without reading
-								unless ctx/out/status [ctx/actor/on-read port/extra]
-							][
-								log-error system/state/last-error
-								ctx/state: 'error
-								ctx/out/status: 500 ; Internal Server Error
-							]
-							log-debug ["State:^[[1m" ctx/state "^[[22mstatus:^[[1m" out/status]
-							either ctx/state = 'read-data [
-								; posted data not fully read
-								either all [
-									not ctx/continued?
-									inp/version = "1.1"
-									"100-continue" = select inp/header 'Expect
-								][
-									;; client waits for permission to send the body
-									ctx/continued?: true
-									ctx/state: 'continue
-									ctx/pending: head port/data ;; `write` replaces port/data
-									write port ajoin [Status-Line inp/version 100 CRLF]
-								][	read port ]
-							][
-								;; `write` replaces port/data, so keep bytes of a pipelined next request
-								if all [ctx/state <> 'error object? inp/header][
-									len: select inp/header 'Content-Length
-									end: case [
-										ctx/body-end        [ctx/body-end]
-										integer? len        [skip header-end len]
-   										find ["POST" "PUT" "PATCH"] inp/method [tail header-end] ;; no length: all data is content
-										'else               [header-end]
-									]
-									ctx/pending: unless tail? end [copy end]
-								]
-								respond port
-							]
+					case [
+						all [ctx/deadline now > ctx/deadline][
+							log-more ["Request timeout:^[[22m" ctx/remote]
+							inp/version: any [inp/version "1.1"]
+							ctx/state: 'error
+							out/status: 408 ; Request Timeout
+							respond port
+						]
+						all [
+							none? ctx/state ;; still reading the request header
+							limit: ctx/config/max-header-size
+							limit < either header-end [(index? header-end) - 1][length? port/data]
 						][
-							; request header not yet fully received
-							read port
+							log-more ["Request header too large:^[[22m" ctx/remote]
+							inp/version: any [inp/version "1.1"]
+							ctx/state: 'error
+							out/status: 431 ; Request Header Fields Too Large
+							respond port
+						]
+						'else [
+							either header-end [
+								try/with [
+									if none? ctx/state [
+										with inp [
+											parse copy/part port/data header-end [
+												copy method some chars-method some space
+												copy target some chars        some space
+												"HTTP/" copy version some chars thru CRLF
+												copy header to end
+												(
+													method:  to string! method
+													target:  decode-target target
+													version: to string! version
+													header:  construct header
+													try [header/Content-Length: to integer! header/Content-Length]
+												)
+											]
+											content: header-end
+										]
+										log-more ["Request header:^[[22m" ctx/inp/method mold ctx/inp/header]
+										;; header complete: the body has its own deadline
+										ctx/deadline: if t: ctx/config/body-timeout [now + t]
+										either all [
+											integer? len: select inp/header 'Content-Length
+											limit: ctx/config/max-content-length
+											len > limit
+										][
+											log-more ["Request content too large:^[[22m" len]
+											ctx/state: 'error
+											out/status: 413 ; Payload Too Large
+										][
+											; on-header actor may be used for rewrite rules (redirection)
+											ctx/actor/on-header ctx
+											if all [
+												none? ctx/out/status
+												Auth-Required? ctx
+												none? ctx/user: ctx/actor/On-Auth ctx
+											][
+												ctx/state: 'error ;; don't keep the connection, a body may follow
+												out/status: 401 ; Unauthorized
+												out/header/WWW-Authenticate: Auth-Challenge ctx/config/auth
+											]
+										]
+									]
+									; if status is already defined (probably redirection), respond without reading
+									unless ctx/out/status [ctx/actor/on-read port/extra]
+								][
+									log-error system/state/last-error
+									ctx/state: 'error
+									ctx/out/status: 500 ; Internal Server Error
+								]
+								log-debug ["State:^[[1m" ctx/state "^[[22mstatus:^[[1m" out/status]
+								either ctx/state = 'read-data [
+									; posted data not fully read
+									either all [
+										not ctx/continued?
+										inp/version = "1.1"
+										"100-continue" = select inp/header 'Expect
+									][
+										;; client waits for permission to send the body
+										ctx/continued?: true
+										ctx/state: 'continue
+										ctx/pending: head port/data ;; `write` replaces port/data
+										write port ajoin [Status-Line inp/version 100 CRLF]
+									][	read port ]
+								][
+									;; `write` replaces port/data, so keep bytes of a pipelined next request
+									if all [ctx/state <> 'error object? inp/header][
+										len: select inp/header 'Content-Length
+										end: case [
+											ctx/body-end        [ctx/body-end]
+											integer? len        [skip header-end len]
+	   										find ["POST" "PUT" "PATCH"] inp/method [tail header-end] ;; no length: all data is content
+											'else               [header-end]
+										]
+										ctx/pending: unless tail? end [copy end]
+									]
+									respond port
+								]
+							][
+								; request header not yet fully received
+								read port
+							]
 						]
 					]
 				]
@@ -1535,6 +1552,7 @@ sys/make-scheme [
 			continued?: none ; `100 Continue` already sent for the current request
 			body-end: none   ; end of a chunked request body (for pipelining)
 			user: none       ; authenticated user (set by On-Auth)
+			deadline: none   ; time by which the current request header/body must be received
 			started: stats/timer
 		]
 		;? port
@@ -1575,7 +1593,7 @@ sys/make-scheme [
 			foreach v ctx/inp [ctx/inp/:v: none]
 			foreach v ctx/out [ctx/out/:v: none]
 			ctx/out/Header: make map! 12
-			ctx/state: ctx/continued?: ctx/body-end: ctx/user: none
+			ctx/state: ctx/continued?: ctx/body-end: ctx/user: ctx/deadline: none
 			; set new timeout
 			ctx/timeout: now + to time! ctx/config/keep-alive/1 
 			either pending: ctx/pending [

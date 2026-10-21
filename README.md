@@ -85,6 +85,8 @@ serve-http [
 | `max-header-size` | `32768` | Max request header size in bytes (`431` above it), `none` = unlimited |
 | `max-content-length` | `10485760` | Max request body size in bytes (`413` above it), `none` = unlimited |
 | `max-websocket-frame` | `1048576` | Max WebSocket frame size in bytes (connection closed with `1009` above it), `none` = unlimited |
+| `header-timeout` | `0:0:10` | Time for the complete request header to arrive (`408` after), `none` = unlimited |
+| `body-timeout` | `0:1:0` | Time for the complete request body to arrive (`408` after); raise for large uploads |
 | `log-access` | `none` | File for the access log |
 | `log-errors` | `none` | File for requests which ended with an error status |
 | `app` | `none` | An object; enables RSP pages (see below) |

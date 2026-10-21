@@ -50,6 +50,8 @@ serve-http [
 		paths:  [%/private/]
 	]
 	trust-ips: [127.0.0.1]
+	header-timeout: 0:0:2
+	body-timeout:   0:0:2
 	;- Server's actor functions                                                                  
 	actor: [
 		On-Accept: func [ctx][
