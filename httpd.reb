@@ -1053,6 +1053,7 @@ sys/make-scheme [
 		
 		either all [
 			keep-alive
+			not ctx/done?  ; server is going to stop, don't keep the connection
 			open? port
 			ctx/requests <= keep-alive/2 ; limit to max requests
 			"close" <> select port/extra/inp/Header 'Connection ; client don't want or cannot handle persistent connection
@@ -1073,8 +1074,12 @@ sys/make-scheme [
 			;try [remove find clients port]
 		]
 		log-debug ["Ports open:" length? clients]
-		if all [ctx/done? zero? length? clients][
+		if ctx/done? [
 			log-more "Server's job done, closing initiated"
+			;; close remaining (idle) connections, so they don't block the stop
+			foreach client copy clients [
+				Awake-Client make event! [type: 'CLOSE port: client]
+			]
 			ctx/parent/data: ctx/done?
 			Awake-Server make event! [type: 'CLOSE port: ctx/parent]
 		]

@@ -128,6 +128,10 @@ foreach test [
 	[ assert-head http://localhost:8081/humans.txt ] ;; actor-generated content
 
 	[ ws-echo-test ]
+
+	[ print as-green "Stopping the server..." assert-http 200 http://localhost:8081/stop ]
+	;; server must not be reachable anymore
+	[ wait 0.25  error? try [read http://localhost:8081/] ]	
 ][
 	print-hline
 	print [as-yellow "Assert:" mold/flat test]
@@ -151,9 +155,9 @@ if find skip read %logs/test-errors.log log-start " 500 " [
 ]
 print-hline
 
-print as-green "Stopping the server..."
-access-os/set 'pid :pid
-wait 0:0:1
+;print as-green "Stopping the server..."
+;access-os/set 'pid :pid
+;wait 0:0:1
 
 if fails > 0 [
 	print as-red [fails "tests have failed!"]

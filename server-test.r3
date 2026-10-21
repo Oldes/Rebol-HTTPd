@@ -98,6 +98,11 @@ serve-http [
 					;@@ before accepting websocket connection upgrade!   
 					system/schemes/httpd/actor/WS-handshake ctx
 				]
+				%/stop [
+					ctx/out/status: 200
+					ctx/out/content: "bye"
+					ctx/done?: true ; stops the server after the response is sent
+				]
 			]
 		]
 		On-Post: func [ctx [object!] /local data][
