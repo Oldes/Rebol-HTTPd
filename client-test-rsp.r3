@@ -9,7 +9,7 @@ import 'json
 print-hline
 print as-green "Launching the server..."
 pid: launch %server-test-rsp.r3
-wait 0:0:1
+wait 0.15
 
 print-hline
 print as-green "Doing the tests..."
@@ -32,6 +32,17 @@ foreach test [
 	[ 404 == first read/all url/missing.rsp ]
 	;; server's working directory must be intact after the failed request
 	[ 1 == load url/test_01.rsp ]
+
+	;; page set-words don't leak into app
+	[ "true" == read url/test_11.rsp ]
+	;; page variables are fresh per request
+	[ "1" == read url/test_12.rsp ]
+	[ "1" == read url/test_12.rsp ]
+	;; shared state is written explicitly via app/...
+	[ "1" == read url/test_13.rsp ]
+	[ "2" == read url/test_13.rsp ]
+	;; includes share the request's page variables
+	[ "2" == read url/test_14.rsp ]
 ][
 	print-hline
 	print [as-yellow "Assert:" mold/flat test]
@@ -49,7 +60,7 @@ foreach test [
 print-hline
 print as-green "Stopping the server..."
 access-os/set 'pid :pid
-wait 0:0:1
+wait 0.15
 
 if fails > 0 [
 	print as-red [fails "tests have failed!"]

@@ -23,6 +23,8 @@ serve-http [
 		name: "Test RSP Application"
 		;; some function
 		random-number: does [random 99999]
+		;; shared counter (pages update it via app/hits:)
+		hits: 0
 	]
 ]
 

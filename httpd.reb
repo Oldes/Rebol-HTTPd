@@ -195,7 +195,9 @@ to-CLF-idate: func [
 ]
 
 rsp-context: context [
-	ctx: none
+	ctx:  none
+	app:  none ;= shared application context (write via path: app/x: ...)
+	page: none ;= request-local context for page set-words
 	print:   func[value][append append ctx/out/content value LF]
 	prin:    func[value][append ctx/out/content value]
 	probe:   func[value][append ctx/out/content mold value]
@@ -211,7 +213,11 @@ rsp-context: context [
 	process: function[data [file! binary! string!] ctx [object!] /include /local res][
 		self/ctx: ctx
 		out: ctx/out/content
-		unless include [clear out]
+		unless include [
+			clear out
+			self/app:  ctx/config/app
+			self/page: make object! [] ;; fresh per request, shared with includes
+		]
 		if file? data [data: read/string data]
 		parse data [any [
 			s: to "<%" e: (append out copy/part s e) 
@@ -231,9 +237,16 @@ rsp-context: context [
 				set get?: opt [#"=" | #"@"] copy code: to "%>" 2 skip (
 					try/with [
 						code: transcode code
-						bind/new code ctx/config/app
-						bind code lib    ;; binds to the library
-						bind code self   ;; binds to the RSP context
+						;; page set-words are request-local (added to page in one call)
+						unless empty? words: collect-words/set/deep/ignore code words-of page [
+							vals: make block! 2 * length? words
+							foreach w words [repend vals [to set-word! w #(none)]]
+							append page vals
+						]
+						bind code lib          ;; library
+						if app [bind code app] ;; app values shadow library
+						bind code self         ;; RSP context (print, include, app...)
+						bind code page         ;; request-local set-words win
 					] :probe
 					catch/all/quit [
 						set/any 'res try/with :code :lib/probe
@@ -248,6 +261,8 @@ rsp-context: context [
 ]
 protect rsp-context
 unprotect in rsp-context 'ctx
+unprotect in rsp-context 'app
+unprotect in rsp-context 'page
 
 
 ;------------------------------------------------------------------------
