@@ -43,6 +43,7 @@ serve-http [
 	log-errors: %logs/test-errors.log
 	list-dir?:  true
 	allow-put: [%/upload/]
+	allow-delete: [%/upload/]
 	trust-ips: [127.0.0.1]
 	;- Server's actor functions                                                                  
 	actor: [

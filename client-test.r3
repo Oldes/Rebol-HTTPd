@@ -322,6 +322,14 @@ foreach test [
 	[ assert-http/post 403 http://localhost:8081/upload/../put-test.txt [PUT [] "x"] ]
 	[ not exists? %hosts/test/put-test.txt ]
 
+	;; DELETE removes the file (204), then it's gone (404); directories are not deleted (409)
+	[ assert-http/post 204 http://localhost:8081/upload/put-test.txt [DELETE []] ]
+	[ not exists? %hosts/test/upload/put-test.txt ]
+	[ assert-http/post 404 http://localhost:8081/upload/put-test.txt [DELETE []] ]
+	[ assert-http/post 409 http://localhost:8081/upload/ [DELETE []] ]
+	;; DELETE outside of the allowed locations is forbidden
+	[ assert-http/post 403 http://localhost:8081/xxx [DELETE []] ]
+
 
 	[ print as-green "Stopping the server..." assert-http 200 http://localhost:8081/stop ]
 	;; server must not be reachable anymore

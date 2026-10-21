@@ -11,7 +11,7 @@ Rebol [
 	Purpose: {
 		A Tiny Webserver Scheme for Rebol 3 (Oldes' branch)
 		Features:
-		* serve static files (GET, HEAD, POST, PUT); large files sent in chunks
+		* serve static files (GET, HEAD, POST, PUT, DELETE); large files sent in chunks
 		* customizable request handling using _actors_ (per server)
 		* decoded request bodies (form-urlencoded, multipart, JSON, text),
 		  chunked uploads and `Expect: 100-continue`
@@ -23,7 +23,7 @@ Rebol [
 	}
 	TODO: {
 		* support for multidomain serving using `Host` header field
-		* default handling of other methods - DELETE, OPTIONS...
+		* default handling of other methods - OPTIONS...
 		* timeout for slow clients (whole request, not per read)
 		* assembling fragmented WebSocket messages
 		* optional `Origin` check for WebSocket upgrades
@@ -308,6 +308,7 @@ sys/make-scheme [
 					keep-alive:  true
 					list-dir?:   true
 					allow-put:   false ; TRUE, or block of allowed paths (relative to root) like [%/upload/]
+					allow-delete: false ; TRUE, or block of allowed paths (relative to root) like [%/upload/]
 					server-name: "Rebol3-HTTPd"
 					trust-ips:   [127.0.0.1]
 					follow-symlinks?: false
@@ -478,24 +479,17 @@ sys/make-scheme [
 		On-Put: func [
 			"Default PUT handler: stores the body as a file in root (requires allow-put)"
 			ctx [object!]
-			/local target allow p follow path dir existed?
+			/local target allow follow path dir existed?
 		][
 			target: ctx/inp/target
-			allow:  ctx/config/allow-put
-			unless all [allow ctx/config/root][
+			unless all [allow: ctx/config/allow-put ctx/config/root][
 				ctx/out/status: 405 ; Method Not Allowed
-				ctx/out/header/Allow: "GET, HEAD, POST"
+				ctx/out/header/Allow: Allowed-Methods ctx
 				exit
 			]
-			if block? allow [
-				;; cleaned path, so `/upload/../x` can't pass as `/upload/`
-				p: clean-path/only target/file
-				unless foreach dir allow [
-					if find/match/case p dir [break/return true]
-				][
-					ctx/out/status: 403 ; Forbidden
-					exit
-				]
+			unless Path-Allowed? allow target/file [
+				ctx/out/status: 403 ; Forbidden
+				exit
 			]
 			follow: ctx/config/follow-symlinks?
 			;; the file may not exist yet, so check its parent directory as well
@@ -519,6 +513,37 @@ sys/make-scheme [
 			ctx/out/status: either existed? [204][201] ; No Content | Created
 		]
 
+		On-Delete: func [
+			"Default DELETE handler: removes a file in root (requires allow-delete)"
+			ctx [object!]
+			/local target allow follow path
+		][
+			target: ctx/inp/target
+			unless all [allow: ctx/config/allow-delete ctx/config/root][
+				ctx/out/status: 405 ; Method Not Allowed
+				ctx/out/header/Allow: Allowed-Methods ctx
+				exit
+			]
+			unless Path-Allowed? allow target/file [
+				ctx/out/status: 403 ; Forbidden
+				exit
+			]
+			follow: ctx/config/follow-symlinks?
+			unless path: Safe-Path/:follow ctx/config/root target/file [
+				ctx/out/status: 403 ; Forbidden
+				exit
+			]
+			switch/default exists? path [
+				file [
+					delete path
+					ctx/out/status: 204 ; No Content
+				]
+				dir [ctx/out/status: 409] ; Conflict (directories are not deleted)
+			][
+				ctx/out/status: 404 ; Not Found
+			]
+		]
+
 		On-Read: func[
 			"Process READ action on client's port"
 			ctx [object!]
@@ -528,6 +553,7 @@ sys/make-scheme [
 				"GET"  [ ctx/actor/on-get  ctx ]
 				"POST" [ ctx/actor/on-read-post ctx ]
 				"PUT"  [ ctx/actor/on-read-put  ctx ]
+				"DELETE" [ ctx/actor/on-delete   ctx ]
 			][
 				ctx/state: 'data-received
 				ctx/out/status: 405 ; Method Not Allowed
@@ -751,6 +777,32 @@ sys/make-scheme [
 			unless find/match real root [return none]
 		]
 		full
+	]
+
+	Path-Allowed?: func [
+		"Returns TRUE if the request path is in a location allowed by an allow-put/allow-delete setting"
+		allow [logic! block! none!] "TRUE, or block of allowed paths like [%/upload/]"
+		file  [file!]
+		/local p
+	][
+		unless block? allow [return true? allow]
+		;; cleaned path, so `/upload/../x` can't pass as `/upload/`
+		p: clean-path/only file
+		foreach dir allow [
+			if find/match/case p dir [return true]
+		]
+		false
+	]
+
+	Allowed-Methods: func [
+		"Returns value for the `Allow` response header"
+		ctx [object!]
+	][
+		ajoin [
+			"GET, HEAD, POST"
+			either ctx/config/allow-put    [", PUT"][""]
+			either ctx/config/allow-delete [", DELETE"][""]
+		]
 	]
 
 	Escape-HTML: function/with [

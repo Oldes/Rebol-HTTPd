@@ -170,6 +170,25 @@ foreach test [
 
 
 print-hline
+print as-yellow "[TEST] HTTPd Path-Allowed?"
+pa: :system/schemes/httpd/Path-Allowed?
+
+foreach test [
+	[ pa true %/x ]
+	[ not pa false %/x ]
+	[ not pa none %/x ]
+	[ pa [%/upload/] %/upload/a.txt ]
+	[ pa [%/a/ %/upload/] %/upload/sub/a.txt ]
+	[ not pa [%/upload/] %/a.txt ]
+	[ not pa [%/upload/] %/upload/../a.txt ]
+	[ not pa [%/upload/] %/UPLOAD/a.txt ]
+][
+	print [as-yellow "Assert:" mold/flat test]
+	either attempt test [print as-green "OK"][++ fails print as-red "FAILED"]
+]
+
+
+print-hline
 print as-yellow "[TEST] HTTPd per-server actors"
 srv1: serve-http/no-wait [port: 8091 actor: [On-Get: func [ctx][ctx/out/content: "one"]]]
 srv2: serve-http/no-wait [port: 8092 actor: [On-Get: func [ctx][ctx/out/content: "two"]]]

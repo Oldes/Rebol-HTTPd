@@ -13,7 +13,7 @@ development, small services, and short-lived servers (like an OAuth2 callback).
 
 ## Features
 
-* **Static files:** GET, HEAD and POST, with large files streamed in chunks and `304 Not Modified` support
+* **Static files:** GET, HEAD, POST, PUT and DELETE with large files streamed in chunks and `304 Not Modified` support
 * **Custom handlers:** override any step of request processing with simple _actor_ functions
 * **Request bodies:** form-urlencoded, multipart, JSON and text bodies are decoded for you; chunked uploads and `Expect: 100-continue` are supported
 * **Connections:** keep-alive (HTTP/1.1 and HTTP/1.0), pipelined requests
@@ -77,6 +77,7 @@ serve-http [
 | `index` | `[%index.html %index.htm]` | Files used when a directory is requested |
 | `list-dir?` | `true` | List directory content when there is no index file |
 | `allow-put` | `false` | Store files uploaded by PUT: `true` anywhere in `root`, or a block of allowed paths like `[%/upload/]` |
+| `allow-delete` | `false` | Delete files by DELETE: `true` anywhere in `root`, or a block of allowed paths like `[%/upload/]` |
 | `keep-alive` | `true` | `true` (15 s, 100 requests), `[timeout max-requests]`, or `false` |
 | `server-name` | `"Rebol3-HTTPd"` | Value of the `Server` response header |
 | `trust-ips` | `[127.0.0.1]` | Proxies whose `X-Real-IP` header is trusted in logs |
@@ -107,6 +108,7 @@ affect each other.
 | `On-Read` | Any request; override it to support other methods (PUT, DELETE...) |
 | `On-Put` | PUT request, with the raw body in `ctx/inp/content`. By default stores it as a file (requires `allow-put?`) |
 | `On-Read-Put` | PUT request with the raw body, before `On-Put` |
+| `On-Delete` | DELETE request. By default removes the file (requires `allow-delete`) |
 | `On-List-Dir` | A directory without an index file is requested |
 | `On-Not-Found` | The requested file doesn't exist; good place for custom 404 pages or in-memory files |
 | `On-Read-Websocket` | A WebSocket message arrives |
