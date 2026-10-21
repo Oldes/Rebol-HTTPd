@@ -1140,15 +1140,15 @@ sys/make-scheme [
 		clients: ctx/parent/extra/clients
 		keep-alive: ctx/config/keep-alive
 		
+		ctx/requests: ctx/requests + 1
 		either all [
 			keep-alive
 			not ctx/done?  ; server is going to stop, don't keep the connection
 			ctx/state <> 'error ; after 413/431/500 the input stream is unreliable
 			open? port
-			ctx/requests <= keep-alive/2 ; limit to max requests
+			ctx/requests < keep-alive/2 ; limit to max requests
 			"close" <> select port/extra/inp/Header 'Connection ; client don't want or cannot handle persistent connection
 		][
-			ctx/requests: ctx/requests + 1
 			log-more ["Keep-alive:^[[22m" ctx/remote "requests:" ctx/requests]
 			; reset client state
 			foreach v ctx/inp [ctx/inp/:v: none]

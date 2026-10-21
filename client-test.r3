@@ -190,6 +190,12 @@ foreach test [
 		did find r "127.0.0.1"
 	] ]
 
+	;; connection is closed after max keep-alive requests (server-test uses [30 100])
+	[ all [
+		binary? r: raw-request append/dup copy "" "GET /plain/ HTTP/1.1^M^/Host: x^M^/^M^/" 105
+		(n: 0  parse r [any [thru "HTTP/1.1 200 " (++ n)]]  n = 100)
+	] ]
+
 	[ print as-green "Stopping the server..." assert-http 200 http://localhost:8081/stop ]
 	;; server must not be reachable anymore
 	[ wait 0.25  error? try [read http://localhost:8081/] ]	
