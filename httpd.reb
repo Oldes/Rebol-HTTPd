@@ -11,7 +11,7 @@ Rebol [
 	Purpose: {
 		A Tiny Webserver Scheme for Rebol 3 (Oldes' branch)
 		Features:
-		* serve static files (GET, HEAD, POST); large files sent in chunks
+		* serve static files (GET, HEAD, POST, PUT); large files sent in chunks
 		* customizable request handling using _actors_ (per server)
 		* decoded request bodies (form-urlencoded, multipart, JSON, text),
 		  chunked uploads and `Expect: 100-continue`
@@ -23,8 +23,7 @@ Rebol [
 	}
 	TODO: {
 		* support for multidomain serving using `Host` header field
-		* default handling of other methods - PUT, DELETE, OPTIONS...
-		* size limit for WebSocket messages
+		* default handling of other methods - DELETE, OPTIONS...
 		* timeout for slow clients (whole request, not per read)
 		* assembling fragmented WebSocket messages
 		* optional `Origin` check for WebSocket upgrades
@@ -308,6 +307,7 @@ sys/make-scheme [
 					index:       [%index.html %index.htm]
 					keep-alive:  true
 					list-dir?:   true
+					allow-put?:  false ; enables the default file upload by PUT
 					server-name: "Rebol3-HTTPd"
 					trust-ips:   [127.0.0.1]
 					follow-symlinks?: false
@@ -418,88 +418,94 @@ sys/make-scheme [
 			true
 		]
 
-		On-Read-Post: func[ctx [object!] /local path content header length type temp target follow res limit][
+		On-Read-Post: func[ctx [object!] /local path content header type temp target follow][
 			header: ctx/inp/header
-			length: select header 'Content-Length
 			unless find header 'Content-Type [
 				;make sure there is any Content-Type
 				extend header 'Content-Type "application/octet-stream"
 			]
-			content: ctx/inp/content
-			if "chunked" = select header 'Transfer-Encoding [
-				res: Decode-Chunked content
-				limit: ctx/config/max-content-length
-				case [
-					word? res [ ;; invalid chunk framing
-						ctx/state: 'error
-						ctx/out/status: 400 ; Bad Request
-						exit
-					]
-					none? res [ ;; incomplete
-						either all [limit limit < length? content][
-							ctx/state: 'error
-							ctx/out/status: 413 ; Payload Too Large
-						][	ctx/state: 'read-data ]
-						exit
-					]
-					all [limit limit < length? res/1][
-						ctx/state: 'error
-						ctx/out/status: 413
-						exit
+			unless content: Read-Body ctx [exit]
+			ctx/state: 'data-received
+			ctx/out/status: 200
+			type: header/Content-Type: decode-content-params header/Content-Type
+			;@@ TODO: handle charset if not utf-8!
+			case [
+				type/2 = "x-www-form-urlencoded" [
+					; using full target decoder, although only values are needed
+					temp: decode-target content
+					ctx/inp/content: reduce [
+						select temp 'values   ; parsed [key value ...]
+						select temp 'original ; raw data
 					]
 				]
-				content: res/1
-				ctx/body-end: res/2 ;; for pipelining
-				length: none
+				type/2 = "json" [
+					ctx/inp/content: decode 'json content
+				]
+				type/1 = "multipart" [
+					ctx/inp/content: decode-multipart-data type content
+				]
+				type/1 = "text" [
+					ctx/inp/content: to string! content
+				]
 			]
 			either all [
-				integer? length
-				length > length? content
+				ctx/config/rsp
+				%.rsp == skip tail ctx/inp/target/file -4
+				ctx/config/root
 			][
-				ctx/state: 'read-data
+				target: ctx/inp/target
+				follow: ctx/config/follow-symlinks?
+				either path: Safe-Path/:follow ctx/config/root target/file [
+					target/file: path
+					ctx/out/header/Date: to-idate/gmt now
+					ctx/out/status: 200
+					Process-RSP ctx
+				][
+					ctx/actor/On-Not-Found ctx target
+				]
 			][
-				ctx/state: 'data-received
-				ctx/out/status: 200
-				type: header/Content-Type: decode-content-params header/Content-Type
-				;@@ TODO: handle charset if not utf-8!
-				case [
-					type/2 = "x-www-form-urlencoded" [
-						; using full target decoder, although only values are needed
-						temp: decode-target content
-						ctx/inp/content: reduce [
-							select temp 'values   ; parsed [key value ...]
-							select temp 'original ; raw data
-						]
-					]
-					type/2 = "json" [
-						ctx/inp/content: decode 'json content
-					]
-					type/1 = "multipart" [
-						ctx/inp/content: decode-multipart-data type content
-					]
-					type/1 = "text" [
-						ctx/inp/content: to string! content
-					]
-				]
-				either all [
-					ctx/config/rsp
-					%.rsp == skip tail ctx/inp/target/file -4
-					ctx/config/root
-				][
-					target: ctx/inp/target
-					follow: ctx/config/follow-symlinks?
-					either path: Safe-Path/:follow ctx/config/root target/file [
-						target/file: path
-						ctx/out/header/Date: to-idate/gmt now
-						ctx/out/status: 200
-						Process-RSP ctx
-					][
-						ctx/actor/On-Not-Found ctx target
-					]
-				][
-					ctx/actor/On-Post ctx
-				]
+				ctx/actor/On-Post ctx
 			]
+		]
+
+		On-Read-Put: func [ctx [object!] /local content][
+			unless content: Read-Body ctx [exit]
+			ctx/state: 'data-received
+			ctx/inp/content: content ;= raw binary
+			ctx/actor/On-Put ctx
+		]
+
+		On-Put: func [
+			"Default PUT handler: stores the body as a file in root (requires allow-put?)"
+			ctx [object!]
+			/local target follow path dir existed?
+		][
+			target: ctx/inp/target
+			unless all [ctx/config/allow-put? ctx/config/root][
+				ctx/out/status: 405 ; Method Not Allowed
+				ctx/out/header/Allow: "GET, HEAD, POST"
+				exit
+			]
+			follow: ctx/config/follow-symlinks?
+			;; the file may not exist yet, so check its parent directory as well
+			unless all [
+				path: Safe-Path/:follow ctx/config/root target/file
+				dir:  Safe-Path/:follow ctx/config/root first split-path target/file
+			][
+				ctx/out/status: 403 ; Forbidden
+				exit
+			]
+			if any [
+				#"/" = last path
+				'dir = exists? path
+				'dir <> exists? dir
+			][
+				ctx/out/status: 409 ; Conflict (target is a directory or parent doesn't exist)
+				exit
+			]
+			existed?: exists? path
+			write path ctx/inp/content
+			ctx/out/status: either existed? [204][201] ; No Content | Created
 		]
 
 		On-Read: func[
@@ -510,6 +516,7 @@ sys/make-scheme [
 				"HEAD" ; same like GET, but without sending any content
 				"GET"  [ ctx/actor/on-get  ctx ]
 				"POST" [ ctx/actor/on-read-post ctx ]
+				"PUT"  [ ctx/actor/on-read-put  ctx ]
 			][
 				ctx/state: 'data-received
 				ctx/out/status: 405 ; Method Not Allowed
@@ -779,6 +786,50 @@ sys/make-scheme [
 		hex-digits: #(bitset! #{000000000000FFC07E0000007E}) ;= charset "0123456789abcdefABCDEF"
 	]
 
+	Read-Body: func [
+		"Returns the complete request body, or NONE when more data is needed or on error (see ctx/state)"
+		ctx [object!]
+		/local header content length res limit
+	][
+		header:  ctx/inp/header
+		content: ctx/inp/content
+		length:  select header 'Content-Length
+		if "chunked" = select header 'Transfer-Encoding [
+			res: Decode-Chunked content
+			limit: ctx/config/max-content-length
+			case [
+				word? res [ ;; invalid chunk framing
+					ctx/state: 'error
+					ctx/out/status: 400 ; Bad Request
+					return none
+				]
+				none? res [ ;; incomplete
+					either all [limit limit < length? content][
+						ctx/state: 'error
+						ctx/out/status: 413 ; Payload Too Large
+					][	ctx/state: 'read-data ]
+					return none
+				]
+				all [limit limit < length? res/1][
+					ctx/state: 'error
+					ctx/out/status: 413
+					return none
+				]
+			]
+			ctx/body-end: res/2 ;; for pipelining
+			return res/1
+		]
+		if integer? length [
+			if length > length? content [
+				ctx/state: 'read-data
+				return none
+			]
+			;; don't include bytes of a pipelined next request
+			content: copy/part content length
+		]
+		content
+	]
+
 	Respond: function [port [port!]][
 		ctx: port/extra
 		out: ctx/out
@@ -994,7 +1045,7 @@ sys/make-scheme [
 									end: case [
 										ctx/body-end        [ctx/body-end]
 										integer? len        [skip header-end len]
-										inp/method = "POST" [tail header-end] ;; no length: all data is content
+   										find ["POST" "PUT"] inp/method [tail header-end] ;; no length: all data is content
 										'else               [header-end]
 									]
 									ctx/pending: unless tail? end [copy end]

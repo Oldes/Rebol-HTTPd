@@ -179,6 +179,8 @@ foreach test [
 	[ "two" == read http://localhost:8092/ ]
 	;; scheme defaults are not modified
 	[ not same? :srv1/extra/actor/On-Get :system/schemes/httpd/actor/On-Get ]
+	;; PUT is not allowed by default
+	[ 405 == first write/all http://localhost:8091/ [PUT [] "x"] ]
 ][
 	print [as-yellow "Assert:" mold/flat test]
 	either attempt test [print as-green "OK"][++ fails print as-red "FAILED"]
@@ -197,6 +199,7 @@ foreach test [
 	print [as-yellow "Assert:" mold/flat test]
 	either attempt test [print as-green "OK"][++ fails print as-red "FAILED"]
 ]
+
 
 close srv1
 close srv2

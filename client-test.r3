@@ -310,6 +310,14 @@ foreach test [
 	[ binary? expect-continue-test ]
 
 
+	;; PUT creates a new file (201), replaces it (204), fails on a missing directory (409)
+	[ assert-http/post 201 http://localhost:8081/put-test.txt [PUT [] "hello"] ]
+	[ "hello" == read/string %hosts/test/put-test.txt ]
+	[ assert-http/post 204 http://localhost:8081/put-test.txt [PUT [] "world"] ]
+	[ "world" == read/string %hosts/test/put-test.txt ]
+	[ assert-http/post 409 http://localhost:8081/missing-dir/x.txt [PUT [] "x"] ]
+
+
 	[ print as-green "Stopping the server..." assert-http 200 http://localhost:8081/stop ]
 	;; server must not be reachable anymore
 	[ wait 0.25  error? try [read http://localhost:8081/] ]	
@@ -340,10 +348,10 @@ print-hline
 ;access-os/set 'pid :pid
 ;wait 0:0:1
 
-try [
-	delete as file! "hosts/test/listing/a&b #1.txt"
-	delete %hosts/test/listing/
-]
+delete as file! "hosts/test/listing/a&b #1.txt"
+delete %hosts/test/listing/
+delete %hosts/test/put-test.txt
+
 
 if fails > 0 [
 	print as-red [fails "tests have failed!"]

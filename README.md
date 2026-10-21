@@ -76,6 +76,7 @@ serve-http [
 | `root` | `none` | Directory to serve files from. Without it, all content comes from your handlers |
 | `index` | `[%index.html %index.htm]` | Files used when a directory is requested |
 | `list-dir?` | `true` | List directory content when there is no index file |
+| `allow-put?` | `false` | Store files uploaded by PUT into `root` |
 | `keep-alive` | `true` | `true` (15 s, 100 requests), `[timeout max-requests]`, or `false` |
 | `server-name` | `"Rebol3-HTTPd"` | Value of the `Server` response header |
 | `trust-ips` | `[127.0.0.1]` | Proxies whose `X-Real-IP` header is trusted in logs |
@@ -104,6 +105,8 @@ affect each other.
 | `On-Post` | POST request, with the body already decoded in `ctx/inp/content` |
 | `On-Read-Post` | POST request with the raw body, before decoding |
 | `On-Read` | Any request; override it to support other methods (PUT, DELETE...) |
+| `On-Put` | PUT request, with the raw body in `ctx/inp/content`. By default stores it as a file (requires `allow-put?`) |
+| `On-Read-Put` | PUT request with the raw body, before `On-Put` |
 | `On-List-Dir` | A directory without an index file is requested |
 | `On-Not-Found` | The requested file doesn't exist; good place for custom 404 pages or in-memory files |
 | `On-Read-Websocket` | A WebSocket message arrives |
