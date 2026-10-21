@@ -118,6 +118,22 @@ either system/platform = 'Windows [
 
 
 print-hline
+print as-yellow "[TEST] HTTPd Escape-HTML"
+escape-html: :system/schemes/httpd/Escape-HTML
+
+foreach test [
+	[ "a &amp; b" == escape-html "a & b" ]
+	[ "&lt;x&gt;" == escape-html "<x>" ]
+	[ "&quot;q&quot;" == escape-html {"q"} ]
+	[ "&amp;lt;" == escape-html "&lt;" ] ;; no double-unescaping
+	[ "a&amp;b" == escape-html %a&b ]
+][
+	print [as-yellow "Assert:" mold/flat test]
+	either attempt test [print as-green "OK"][++ fails print as-red "FAILED"]
+]
+
+
+print-hline
 if fails > 0 [
 	print as-red [fails "tests have failed!"]
 	quit/return fails

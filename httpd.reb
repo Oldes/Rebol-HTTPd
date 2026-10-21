@@ -304,7 +304,7 @@ sys/make-scheme [
 
 		On-Get: func [
 			ctx [object!]
-			/local target path info index modified If-Modified-Since follow
+			/local target path info index modified If-Modified-Since follow loc
 		][
 			target: ctx/inp/target
 			unless ctx/config/root [
@@ -317,6 +317,17 @@ sys/make-scheme [
 				exit
 			]
 			target/file: path
+			;; directory requested without trailing slash -> redirect, so relative links work
+			if all [
+				'dir = exists? path
+				#"/" <> last path
+			][
+				loc: to string! ctx/inp/target/original
+				insert any [find loc #"?" tail loc] #"/"
+				ctx/out/status: 301
+				ctx/out/header/Location: loc
+				exit
+			]
 			ctx/out/header/Date: to-idate/gmt now
 			ctx/out/status: 200
 
@@ -483,7 +494,7 @@ sys/make-scheme [
 
 		On-List-Dir: func[
 			ctx [object!] target [object!]
-			/local path dir out size date files dirs
+			/local path dir out size date files dirs name href
 		][
 			unless ctx/config/list-dir? [
 				log-more ["Listing dir not allowed:^[[1m" mold target/file]
@@ -496,8 +507,8 @@ sys/make-scheme [
 			try/with [
 				out: make string! 2000
 				append out ajoin [
-					{<html><head><title>Index of } path
-					{</title></head><body bgcolor="white"><h1>Index of } path
+					{<html><head><title>Index of } Escape-HTML path
+					{</title></head><body bgcolor="white"><h1>Index of } Escape-HTML path
 					{</h1><hr><pre>^/}
 				]
 				unless empty? path [
@@ -514,9 +525,10 @@ sys/make-scheme [
 
 				foreach file files [
 					set [size date] query/mode dir/:file [:size :date]
+					name: form file
 					append out ajoin [
-						{<a href="} file {">} file {</a> }
-						pad copy "" 50 - length? file
+						{<a href="} enhex name {">} Escape-HTML name {</a> }
+						pad copy "" 50 - length? name
 						pad/with date/date  -11 #"0" #" "
 						pad/with date/hour   -2 #"0" #":"
 						pad/with date/minute -2 #"0" #" "
@@ -643,6 +655,23 @@ sys/make-scheme [
 			unless find/match real root [return none]
 		]
 		full
+	]
+
+	Escape-HTML: function/with [
+		"Escapes text for use in HTML content or attribute values"
+		text [any-string!]
+	][
+		out: make string! length? text
+		parse text [collect into out any [
+			keep some normal-chars
+			| #"&"  keep ("&amp;")
+			| #"<"  keep ("&lt;")
+			| #">"  keep ("&gt;")
+			| #"^"" keep ("&quot;")
+		]]
+		out
+	][
+		normal-chars: #(bitset! not #{000000002200000A}) ;= complement charset {&<>"}
 	]
 
 	Respond: function [port [port!]][

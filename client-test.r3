@@ -100,6 +100,10 @@ ws-echo-test: function [
 
 log-start: any [size? %logs/test-errors.log 0]
 
+;; directory with a file name needing escaping (for listing tests)
+make-dir/deep %hosts/test/listing/
+write as file! "hosts/test/listing/a&b #1.txt" "x"
+
 print-hline
 print as-green "Launching the server..."
 pid: launch %server-test.r3
@@ -128,6 +132,18 @@ foreach test [
 	[ assert-head http://localhost:8081/humans.txt ] ;; actor-generated content
 
 	[ ws-echo-test ]
+
+	;; listing escapes names in text and encodes them in links
+	[ all [
+		string? s: try [read http://localhost:8081/listing/]
+		did find s {href="a%26b%20%231.txt"}
+		did find s {>a&amp;b #1.txt<}
+	] ]
+	;; directory without trailing slash is redirected (and the listing served)
+	[ all [
+		string? s: try [read http://localhost:8081/listing]
+		did find s "a&amp;b #1.txt"
+	] ]
 
 	[ print as-green "Stopping the server..." assert-http 200 http://localhost:8081/stop ]
 	;; server must not be reachable anymore
@@ -158,6 +174,11 @@ print-hline
 ;print as-green "Stopping the server..."
 ;access-os/set 'pid :pid
 ;wait 0:0:1
+
+try [
+	delete as file! "hosts/test/listing/a&b #1.txt"
+	delete %hosts/test/listing/
+]
 
 if fails > 0 [
 	print as-red [fails "tests have failed!"]
