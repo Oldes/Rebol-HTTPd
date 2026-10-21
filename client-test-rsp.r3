@@ -28,6 +28,7 @@ foreach test [
 	[ "<%= 1 + 1 %>" == read url/test_07.rsp ]
 	[ "AxB" == read url/test_08.rsp ]
 	[ did find read url/test_09.rsp "RSP include not found" ]
+	[ "Ay2B" == read url/test_10.rsp ]
 ][
 	print-hline
 	print [as-yellow "Assert:" mold/flat test]

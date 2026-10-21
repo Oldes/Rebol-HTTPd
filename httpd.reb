@@ -199,11 +199,13 @@ rsp-context: context [
 	print:   func[value][append append ctx/out/content value LF]
 	prin:    func[value][append ctx/out/content value]
 	probe:   func[value][append ctx/out/content mold value]
-	include: func[path [file!] /local dir][
+	include: func[path [file!] /local dir parts res][
 		dir: what-dir
-		change-dir first split-path path
-		process/include path ctx
+		parts: split-path path
+		change-dir parts/1
+		set/any 'res try [process/include parts/2 ctx]
 		change-dir dir
+		if error? :res [do :res] ;; re-throw after restoring the directory
 		() ;= unset!
 	]
 	process: function[data [file! binary! string!] ctx [object!] /include /local res][
