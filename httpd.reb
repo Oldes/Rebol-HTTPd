@@ -11,7 +11,7 @@ Rebol [
 	Purpose: {
 		A Tiny Webserver Scheme for Rebol 3 (Oldes' branch)
 		Features:
-		* serve static files (GET, HEAD, POST, PUT, DELETE); large files sent in chunks
+		* serve static files (GET, HEAD, POST, PUT, PATCH, DELETE and OPTIONS; large files sent in chunks
 		* customizable request handling using _actors_ (per server)
 		* decoded request bodies (form-urlencoded, multipart, JSON, text),
 		  chunked uploads and `Expect: 100-continue`
@@ -23,7 +23,6 @@ Rebol [
 	}
 	TODO: {
 		* support for multidomain serving using `Host` header field
-		* default handling of other methods - OPTIONS...
 		* timeout for slow clients (whole request, not per read)
 		* assembling fragmented WebSocket messages
 		* optional `Origin` check for WebSocket upgrades
@@ -544,19 +543,43 @@ sys/make-scheme [
 			]
 		]
 
+		On-Options: func [
+			"Default OPTIONS handler: lists allowed methods"
+			ctx [object!]
+		][
+			ctx/out/status: 204 ; No Content
+			ctx/out/header/Allow: Allowed-Methods ctx
+		]
+
+		On-Read-Patch: func [ctx [object!] /local content][
+			;; read the body even when not handled, so the connection stays in sync
+			unless content: Read-Body ctx [exit]
+			ctx/state: 'data-received
+			either any-function? get in ctx/actor 'On-Patch [
+				ctx/inp/content: content ;= raw binary
+				ctx/actor/On-Patch ctx
+			][
+				ctx/out/status: 405 ; Method Not Allowed
+				ctx/out/header/Allow: Allowed-Methods ctx
+			]
+		]
+
 		On-Read: func[
 			"Process READ action on client's port"
 			ctx [object!]
 		][
 			switch/default ctx/inp/method [
 				"HEAD" ; same like GET, but without sending any content
-				"GET"  [ ctx/actor/on-get  ctx ]
-				"POST" [ ctx/actor/on-read-post ctx ]
-				"PUT"  [ ctx/actor/on-read-put  ctx ]
-				"DELETE" [ ctx/actor/on-delete   ctx ]
+				"GET"     [ ctx/actor/on-get        ctx ]
+				"POST"    [ ctx/actor/on-read-post  ctx ]
+				"PUT"     [ ctx/actor/on-read-put   ctx ]
+				"PATCH"   [ ctx/actor/on-read-patch ctx ]
+				"DELETE"  [ ctx/actor/on-delete     ctx ]
+				"OPTIONS" [ ctx/actor/on-options    ctx ]
 			][
 				ctx/state: 'data-received
 				ctx/out/status: 405 ; Method Not Allowed
+				ctx/out/header/Allow: Allowed-Methods ctx
 			]
 		]
 
@@ -795,13 +818,18 @@ sys/make-scheme [
 	]
 
 	Allowed-Methods: func [
-		"Returns value for the `Allow` response header"
+		"Returns value for the `Allow` response header (for the requested path)"
 		ctx [object!]
+		/local file root
 	][
+		file: ctx/inp/target/file
+		root: ctx/config/root
 		ajoin [
-			"GET, HEAD, POST"
-			either ctx/config/allow-put    [", PUT"][""]
-			either ctx/config/allow-delete [", DELETE"][""]
+			"OPTIONS, GET, HEAD, POST"
+			if all [root Path-Allowed? ctx/config/allow-put    file][", PUT"]
+			if all [root Path-Allowed? ctx/config/allow-delete file][", DELETE"]
+			;; PATCH has no default behavior, so only when a handler is provided
+			if any-function? get in ctx/actor 'On-Patch [", PATCH"]
 		]
 	]
 
@@ -933,6 +961,12 @@ sys/make-scheme [
 			]
 			if ctx/inp/method = "HEAD" [
 				;; HEAD must never send a body
+				if port? out/content [close out/content]
+				out/content: none
+			]
+			if any [out/status < 200 out/status = 204][
+				;; these responses must not have a body or Content-Length
+				out/header/Content-Length: none
 				if port? out/content [close out/content]
 				out/content: none
 			]
@@ -1108,7 +1142,7 @@ sys/make-scheme [
 									end: case [
 										ctx/body-end        [ctx/body-end]
 										integer? len        [skip header-end len]
-   										find ["POST" "PUT"] inp/method [tail header-end] ;; no length: all data is content
+   										find ["POST" "PUT" "PATCH"] inp/method [tail header-end] ;; no length: all data is content
 										'else               [header-end]
 									]
 									ctx/pending: unless tail? end [copy end]

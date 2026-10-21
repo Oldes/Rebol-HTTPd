@@ -198,8 +198,9 @@ foreach test [
 	[ "two" == read http://localhost:8092/ ]
 	;; scheme defaults are not modified
 	[ not same? :srv1/extra/actor/On-Get :system/schemes/httpd/actor/On-Get ]
-	;; PUT is not allowed by default
+	;; PUT and DELETE are not allowed by default
 	[ 405 == first write/all http://localhost:8091/ [PUT [] "x"] ]
+	[ 405 == first write/all http://localhost:8091/x [DELETE []] ]
 ][
 	print [as-yellow "Assert:" mold/flat test]
 	either attempt test [print as-green "OK"][++ fails print as-red "FAILED"]
@@ -219,11 +220,28 @@ foreach test [
 	either attempt test [print as-green "OK"][++ fails print as-red "FAILED"]
 ]
 
+print-hline
+print as-yellow "[TEST] HTTPd PATCH handler"
+srv5: serve-http/no-wait [port: 8095 actor: [
+	On-Patch: func [ctx][ctx/out/content: join "patched: " to string! ctx/inp/content]
+]]
+
+foreach test [
+	[ "patched: x" == write http://localhost:8095/a [PATCH [] "x"] ]
+	;; PATCH is listed only when a handler is provided
+	[ did find select second write/all http://localhost:8095/a [OPTIONS []] 'Allow "PATCH" ]
+	[ not find select second write/all http://localhost:8091/a [OPTIONS []] 'Allow "PATCH" ]
+][
+	print [as-yellow "Assert:" mold/flat test]
+	either attempt test [print as-green "OK"][++ fails print as-red "FAILED"]
+]
+
 
 close srv1
 close srv2
 close srv3
 close srv4
+close srv5
 
 
 print-hline

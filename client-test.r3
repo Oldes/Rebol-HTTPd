@@ -330,6 +330,18 @@ foreach test [
 	;; DELETE outside of the allowed locations is forbidden
 	[ assert-http/post 403 http://localhost:8081/xxx [DELETE []] ]
 
+	;; OPTIONS lists methods allowed for the path
+	[ "OPTIONS, GET, HEAD, POST, PUT, DELETE" = probe select second write/all http://localhost:8081/upload/x.txt [OPTIONS []] 'Allow ]
+	[ "OPTIONS, GET, HEAD, POST" = probe select second write/all http://localhost:8081/x.txt [OPTIONS []] 'Allow ]
+	;; 204 responses have no Content-Length
+	[ all [
+		binary? r: raw-request "OPTIONS * HTTP/1.1^M^/Host: x^M^/Connection: close^M^/^M^/"
+		did find/match r "HTTP/1.1 204 "
+		not find r "Content-Length"
+	] ]
+	;; PATCH without a handler -> 405
+	[ assert-http/post 405 http://localhost:8081/x.txt [PATCH [] "x"] ]
+
 
 	[ print as-green "Stopping the server..." assert-http 200 http://localhost:8081/stop ]
 	;; server must not be reachable anymore

@@ -13,7 +13,7 @@ development, small services, and short-lived servers (like an OAuth2 callback).
 
 ## Features
 
-* **Static files:** GET, HEAD, POST, PUT and DELETE with large files streamed in chunks and `304 Not Modified` support
+* **Static files:** GET, HEAD, POST, PUT, PATCH, DELETE and OPTIONS with large files streamed in chunks and `304 Not Modified` support
 * **Custom handlers:** override any step of request processing with simple _actor_ functions
 * **Request bodies:** form-urlencoded, multipart, JSON and text bodies are decoded for you; chunked uploads and `Expect: 100-continue` are supported
 * **Connections:** keep-alive (HTTP/1.1 and HTTP/1.0), pipelined requests
@@ -109,6 +109,9 @@ affect each other.
 | `On-Put` | PUT request, with the raw body in `ctx/inp/content`. By default stores it as a file (requires `allow-put?`) |
 | `On-Read-Put` | PUT request with the raw body, before `On-Put` |
 | `On-Delete` | DELETE request. By default removes the file (requires `allow-delete`) |
+| `On-Options` | OPTIONS request. By default answers with the methods allowed for the path |
+| `On-Patch` | PATCH request, with the raw body in `ctx/inp/content`. No default behavior (`405`) |
+| `On-Read-Patch` | PATCH request with the raw body, before `On-Patch` |
 | `On-List-Dir` | A directory without an index file is requested |
 | `On-Not-Found` | The requested file doesn't exist; good place for custom 404 pages or in-memory files |
 | `On-Read-Websocket` | A WebSocket message arrives |
