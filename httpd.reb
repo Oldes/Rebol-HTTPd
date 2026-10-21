@@ -543,7 +543,7 @@ sys/make-scheme [
 
 		On-List-Dir: func[
 			ctx [object!] target [object!]
-			/local path dir out size date files dirs name href
+			/local path dir out size date files dirs name
 		][
 			unless ctx/config/list-dir? [
 				log-more ["Listing dir not allowed:^[[1m" mold target/file]
@@ -867,7 +867,7 @@ sys/make-scheme [
 			msg: ajoin [
 				remote-ip
 				{ - - [} to-CLF-idate now {] "}
-				ctx/inp/method #" "
+				any [ctx/inp/method #"-"] #" "
 				either ctx/inp/target [to string! ctx/inp/target/original][#"-"]
 				" HTTP/" ctx/inp/version {" }
 				ctx/out/status #" "
