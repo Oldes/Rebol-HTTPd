@@ -3,7 +3,7 @@ Rebol [
 	Type:    module
 	Name:    httpd
 	Date:    21-Oct-2026
-	Version: 0.11.1
+	Version: 0.11.2
 	Author: ["Andreas Bolka" "Christopher Ross-Gill" "Oldes"]
 	Exports: [serve-http http-server decode-target to-CLF-idate]
 	Home:    https://github.com/Oldes/Rebol-HTTPd
@@ -624,14 +624,22 @@ sys/make-scheme [
 				]
 			]		
 
-			out/header/Content-Length: either out/content [
-				if string? out/content [
-					; must be converted to binary to have proper length if not ascii
-					out/content: to binary! out/content
+			out/header/Content-Length: case [
+				out/content [
+					if string? out/content [
+						;; must be converted to binary to have proper length if not ascii
+						out/content: to binary! out/content
+					]
+					length? out/content
 				]
-				length? out/content
-			][
-				0
+				;; HEAD on a file: keep the size set by On-Get
+				ctx/inp/method = "HEAD" [any [out/header/Content-Length 0]]
+				'else [0]
+			]
+			if ctx/inp/method = "HEAD" [
+				;; HEAD must never send a body
+				if port? out/content [close out/content]
+				out/content: none
 			]
 
 			if keep-alive: ctx/config/keep-alive [

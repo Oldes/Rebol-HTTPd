@@ -1,9 +1,8 @@
 Rebol [
 	Title:  "Test HTTPd Scheme (client)"
 	File:   %client-test.r3
-	Date:    02-Jul-2020
-	Author: "Oldes"
-	Version: 0.6.0
+	Date:    21-Oct-2026
+	Version: 0.11.2
 	Note: {
 		To test POST method from Rebol console, try this:
 		```
@@ -32,12 +31,28 @@ assert-http: func[
 	]
 ]
 
-print-horizontal-line
+assert-head: func[
+	"HEAD must return same status and Content-Length as GET, but no body"
+	url [url!]
+	/local g h
+][
+	all [
+		block? g: try [read/all url]
+		block? h: try [write/all url [HEAD [] ""]]
+		g/1 = h/1
+		block? h/3
+		any [none? h/3/3 empty? h/3/3]
+		(to integer! h/2/Content-Length) = length? to binary! g/3
+		h
+	]
+]
+
+print-hline
 print as-green "Launching the server..."
 pid: launch %server-test.r3
 wait 0:0:1
 
-print-horizontal-line
+print-hline
 print as-green "Doing the tests..."
 
 fails: 0
@@ -54,8 +69,11 @@ foreach test [
 	[ assert-http/post 200 http://localhost:8081/api/v2/do #[token: "SOME_SECRET" code: "[1 + 1]"] ]
 	[ assert-http/post 401 http://localhost:8081/api/v2/do #[token: "ELSE_SECRET" code: "[1 + 1]"] ]
 	[ assert-http/post 200 http://localhost:8081/api/v2/do {token=SOME_SECRET&code=1%20%2B%202} ]
+
+	[ assert-head http://localhost:8081/           ] ;; file (index) path
+	[ assert-head http://localhost:8081/humans.txt ] ;; actor-generated content
 ][
-	print-horizontal-line
+	print-hline
 	print [as-yellow "Assert:" mold/flat test]
 	result: try :test 
 	print "------"
@@ -69,7 +87,7 @@ foreach test [
 	print ""
 ]
 
-print-horizontal-line
+print-hline
 print as-green "Stopping the server..."
 access-os/set 'pid :pid
 wait 0:0:1
