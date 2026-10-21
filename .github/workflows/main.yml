@@ -14,12 +14,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: Install Rebol for the test
-      uses: oldes/install-rebol@v3.17.0
+      uses: oldes/install-rebol@v3.22.1
       with:
         product: Bulk
+
+    - name: Test HTTPd internal code
+      run:  ./rebol3 httpd-test.r3
 
     - name: Test HTTPd server
       run:  ./rebol3 client-test.r3
