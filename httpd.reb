@@ -545,9 +545,9 @@ sys/make-scheme [
 		204 "No Content"
 		205 "Reset Content"
 		206 "Partial Content"
-		;207 "Multi-Status"
-		;208 "Already Reported"
-		;226 "IM Used"
+		207 "Multi-Status"
+		208 "Already Reported"
+		226 "IM Used"
 		300 "Multiple Choices"
 		301 "Moved Permanently"
 		302 "Found"              ;Previously "Moved temporarily"
@@ -568,44 +568,51 @@ sys/make-scheme [
 		408 "Request Timeout"
 		409 "Conflict"
 		410 "Gone"
-		;411 "Length Required"
-		;412 "Precondition Failed"
-		;413 "Payload Too Large"
-		;414 "URI Too Long"
-		;415 "Unsupported Media Type"
-		;416 "Range Not Satisfiable"
-		;417 "Expectation Failed"
-		;418 "I'm a teapot"
-		;421 "Misdirected Request"
-		;422 "Unprocessable Entity"
-		;423 "Locked"
-		;424 "Failed Dependency"
-		;426 "Upgrade Required"
-		;428 "Precondition Required"
-		;429 "Too Many Requests"
-		;431 "Request Header Fields Too Large"
-		;451 "Unavailable For Legal Reasons" ;@@ https://tools.ietf.org/html/rfc7725
+		411 "Length Required"
+		412 "Precondition Failed"
+		413 "Payload Too Large"
+		414 "URI Too Long"
+		415 "Unsupported Media Type"
+		416 "Range Not Satisfiable"
+		417 "Expectation Failed"
+		418 "I'm a teapot"
+		421 "Misdirected Request"
+		422 "Unprocessable Entity"
+		423 "Locked"
+		424 "Failed Dependency"
+		426 "Upgrade Required"
+		428 "Precondition Required"
+		429 "Too Many Requests"
+		431 "Request Header Fields Too Large"
+		451 "Unavailable For Legal Reasons" ;@@ https://tools.ietf.org/html/rfc7725
 		500 "Internal Server Error"
 		501 "Not Implemented"
 		502 "Bad Gateway"
 		503 "Service Unavailable"
 		504 "Gateway Timeout"
 		505 "HTTP Version Not Supported"
-		;506 "Variant Also Negotiates"
-		;507 "Insufficient Storage"
-		;508 "Loop Detected"
-		;510 "Not Extended"
-		;511 "Network Authentication Required"
+		506 "Variant Also Negotiates"
+		507 "Insufficient Storage"
+		508 "Loop Detected"
+		510 "Not Extended"
+		511 "Network Authentication Required"
+	]
+
+	Status-Line: func [
+		"Returns HTTP response status line"
+		version [string!] status [integer!]
+	][
+		ajoin ["HTTP/" version #" " status #" " any [status-codes/:status "Unknown"] CRLF]
 	]
 
 	Respond: function [port [port!]][
 		ctx: port/extra
 		out: ctx/out
 		unless out/status [out/status: 200] ;; expect OK response if not set
-		log-more ["Respond:^[[22m" out/status status-codes/(out/status) length? out/content]
+		log-more ["Respond:^[[22m" out/status length? out/content]
 		; send the response header
 		buffer: make binary! 1024
-		append buffer ajoin ["HTTP/" ctx/inp/version #" " out/status #" " status-codes/(out/status) CRLF]
+		append buffer Status-Line ctx/inp/version out/status
 
 		either "websocket" = out/header/upgrade [
 			ctx/inp/method: "websocket"
