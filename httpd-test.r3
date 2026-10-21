@@ -147,6 +147,24 @@ foreach test [
 
 
 print-hline
+print as-yellow "[TEST] HTTPd per-server actors"
+srv1: serve-http/no-wait [port: 8091 actor: [On-Get: func [ctx][ctx/out/content: "one"]]]
+srv2: serve-http/no-wait [port: 8092 actor: [On-Get: func [ctx][ctx/out/content: "two"]]]
+
+foreach test [
+	[ "one" == read http://localhost:8091/ ]
+	[ "two" == read http://localhost:8092/ ]
+	;; scheme defaults are not modified
+	[ not same? :srv1/extra/actor/On-Get :system/schemes/httpd/actor/On-Get ]
+][
+	print [as-yellow "Assert:" mold/flat test]
+	either attempt test [print as-green "OK"][++ fails print as-red "FAILED"]
+]
+close srv1
+close srv2
+
+
+print-hline
 if fails > 0 [
 	print as-red [fails "tests have failed!"]
 	quit/return fails

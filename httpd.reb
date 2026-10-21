@@ -288,8 +288,11 @@ sys/make-scheme [
 				subport/extra: make object! [
 					parent: port
 					config: none
+					actor:  none
 					clients: make block! 16
 				]
+				;; per-server copy of default actors (customized by serve-http)
+				actor: subport/extra/actor: make port/scheme/actor []
 				subport/extra/config:
 				config: make map! reduce/no-set [
 					root:        none
@@ -328,12 +331,12 @@ sys/make-scheme [
 		][
 			target: ctx/inp/target
 			unless ctx/config/root [
-				Actor/On-Not-Found ctx target
+				ctx/actor/On-Not-Found ctx target
 				exit
 			]
 			follow: ctx/config/follow-symlinks?
 			unless path: Safe-Path/:follow ctx/config/root target/file [
-				Actor/On-Not-Found ctx target
+				ctx/actor/On-Not-Found ctx target
 				exit
 			]
 			target/file: path
@@ -370,7 +373,7 @@ sys/make-scheme [
 					]
 					if path <> index [
 						; client is requesting directory, which don't have index file
-						return Actor/On-List-Dir ctx target
+						return ctx/actor/On-List-Dir ctx target
 					]
 				]
 				info: query/mode path [date: size:]
@@ -396,7 +399,7 @@ sys/make-scheme [
 					]
 				]
 			][
-				Actor/On-Not-Found ctx target
+				ctx/ctor/On-Not-Found ctx target
 			]
 		]
 
@@ -455,10 +458,10 @@ sys/make-scheme [
 						ctx/out/status: 200
 						Process-RSP ctx
 					][
-						Actor/On-Not-Found ctx target
+						ctx/actor/On-Not-Found ctx target
 					]
 				][
-					Actor/On-Post ctx
+					ctx/actor/On-Post ctx
 				]
 			]
 		]
@@ -469,8 +472,8 @@ sys/make-scheme [
 		][
 			switch/default ctx/inp/method [
 				"HEAD" ; same like GET, but without sending any content
-				"GET"  [ Actor/on-get  ctx ]
-				"POST" [ Actor/on-read-post ctx ]
+				"GET"  [ ctx/actor/on-get  ctx ]
+				"POST" [ ctx/actor/on-read-post ctx ]
 			][
 				ctx/state: 'data-received
 				ctx/out/status: 405 ; Method Not Allowed
@@ -874,11 +877,11 @@ sys/make-scheme [
 										out/status: 413 ; Payload Too Large
 									][
 										; on-header actor may be used for rewrite rules (redirection)
-										actor/on-header ctx
+										ctx/actor/on-header ctx
 									]
 								]
 								; if status is already defined (probably redirection), respond without reading
-								unless ctx/out/status [actor/on-read port/extra]
+								unless ctx/out/status [ctx/actor/on-read port/extra]
 							][
 								log-error system/state/last-error
 								ctx/state: 'error
@@ -1039,12 +1042,12 @@ sys/make-scheme [
 								code: to integer! take/part request-data 2
 								log-more ["WS Close reason:" as-red code]
 							]
-							actor/On-Close-Websocket ctx code
+							ctx/actor/On-Close-Websocket ctx code
 							event/type: 'CLOSE
 							Awake-Websocket event
 							exit
 						]
-						actor/On-Read-Websocket ctx final? opcode
+						ctx/actor/On-Read-Websocket ctx final? opcode
 					]
 				][
 					log-error system/state/last-error
@@ -1102,6 +1105,7 @@ sys/make-scheme [
 				Content: none
 			]
 			config: none
+			actor: none
 			timeout: none
 			done?: none
 			requests: 0   ; number of already served requests per connection
@@ -1110,8 +1114,9 @@ sys/make-scheme [
 		]
 		;? port
 		ctx/config: port/extra/config
+		ctx/actor:  port/extra/actor
 		
-		unless Actor/On-Accept ctx [
+		unless ctx/actor/On-Accept ctx [
 			; connection not allowed
 			log-more ["Client not accepted:^[[22m" info/remote-ip]
 			close client
@@ -1202,7 +1207,7 @@ sys/make-scheme [
 		log-more ["RSP input:^[[1m" mold ctx/inp/target/file]
 		path: ctx/inp/target/file
 		unless exists? path [
-			Actor/On-Not-Found ctx ctx/inp/target
+			ctx/actor/On-Not-Found ctx ctx/inp/target
 			exit
 		]
 		dir: what-dir
@@ -1311,7 +1316,7 @@ serve-http: function [
 	sys/log/info 'HTTPD ["Listening on port:" :port "with root directory:" as-green spec/root]
 	
 	if actions: spec/actor [
-		append server/actor either block? actions [
+		append server/extra/actor either block? actions [
 			bind actions server/scheme
 			reduce/no-set actions
 		][	bind body-of actions server/scheme ]
