@@ -164,6 +164,48 @@ raw-request: function [
 	result
 ]
 
+expect-continue-test: function [
+	"Sends POST header with `Expect: 100-continue`, the body only after `100 Continue`"
+][
+	header: to binary! ajoin [
+		"POST / HTTP/1.1^M^/Host: x^M^/Content-Type: text/plain^M^/"
+		"Content-Length: 5^M^/Expect: 100-continue^M^/^M^/"
+	]
+	stage: 'header
+	result: none
+	conn: open tcp://127.0.0.1:8081
+	conn/awake: func [event /local port data][
+		port: event/port
+		switch event/type [
+			lookup  [open port]
+			connect [write port header]
+			wrote   [read port]
+			read [
+				data: port/data
+				case [
+					all [stage = 'header find data "HTTP/1.1 100 "][
+						stage: 'body
+						write port "hello"
+					]
+					find data "HTTP/1.1 200 " [
+						result: all [stage = 'body copy data]
+						return true
+					]
+					'else [read port]
+				]
+			]
+			close [return true]
+		]
+		false
+	]
+	wait [conn 5]
+	close conn
+	result
+]
+
+
+
+
 log-start: any [size? %logs/test-errors.log 0]
 
 ;; directory with a file name needing escaping (for listing tests)
@@ -237,12 +279,14 @@ foreach test [
 		did find r "127.0.0.1"
 	] ]
 
+	
 	;; connection is closed after max keep-alive requests (server-test uses [30 100])
 	[ all [
 		binary? r: raw-request append/dup copy "" "GET /plain/ HTTP/1.1^M^/Host: x^M^/^M^/" 105
 		(n: 0  parse r [any [thru "HTTP/1.1 200 " (++ n)]]  n = 100)
 	] ]
 
+	
 	;; HTTP/1.0 without keep-alive request is closed right after the response
 	[ all [
 		binary? r: raw-request "GET /plain/ HTTP/1.0^M^/Host: x^M^/^M^/"
@@ -258,6 +302,11 @@ foreach test [
 		did find r "Connection: keep-alive"
 		did find r "Connection: close"
 	] ]
+
+
+	;; server sends `100 Continue` before the body is sent, then the final response
+	[ binary? expect-continue-test ]
+
 
 	[ print as-green "Stopping the server..." assert-http 200 http://localhost:8081/stop ]
 	;; server must not be reachable anymore

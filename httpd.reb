@@ -913,7 +913,17 @@ sys/make-scheme [
 							log-debug ["State:^[[1m" ctx/state "^[[22mstatus:^[[1m" out/status]
 							either ctx/state = 'read-data [
 								; posted data not fully read
-								read port
+								either all [
+									not ctx/continued?
+									inp/version = "1.1"
+									"100-continue" = select inp/header 'Expect
+								][
+									;; client waits for permission to send the body
+									ctx/continued?: true
+									ctx/state: 'continue
+									ctx/pending: head port/data ;; `write` replaces port/data
+									write port ajoin [Status-Line inp/version 100 CRLF]
+								][	read port ]
 							][
 								;; `write` replaces port/data, so keep bytes of a pipelined next request
 								if all [ctx/state <> 'error object? inp/header][
@@ -934,39 +944,46 @@ sys/make-scheme [
 					]
 				]
 				WROTE [
-					either all [
-						out
-						out/content
+					either ctx/state = 'continue [
+						;; interim `100 Continue` sent; restore received data and read the body
+						ctx/state: 'read-data
+						port/data: ctx/pending
+						ctx/pending: none
+						read port
 					][
-						case [
-							port? out/content [
-								; streaming output from port
-								buffer: copy/part out/content 32000 ;4096
-								either empty? buffer [
-									; end of stream
-									close out/content ; closing source port
-									End-Client port
-								][
-									try/with [
-										write port buffer
-									][
-										log-error  "Write failed (2)!"
-										;probe buffer
+						either all [
+							out
+							out/content
+						][
+							case [
+								port? out/content [
+									; streaming output from port
+									buffer: copy/part out/content 32000 ;4096
+									either empty? buffer [
+										; end of stream
+										close out/content ; closing source port
 										End-Client port
+									][
+										try/with [
+											write port buffer
+										][
+											log-error  "Write failed (2)!"
+											End-Client port
+										]
 									]
 								]
+								true [
+									; for now just remove the content which is written
+									; no need to chunk data manually, these are handled internaly
+									; just make sure you don't use any other `write` before receiving `wrote`
+									write port out/content
+									out/content: none
+								]
 							]
-							true [
-								; for now just remove the content which is written
-								; no need to chunk data manually, these are handled internaly
-								; just make sure you don't use any other `write` before receiving `wrote`
-								write port out/content
-								out/content: none
-							]
+						][
+							; there is no other content to write, so close connection
+							End-Client port
 						]
-					][
-						; there is no other content to write, so close connection
-						End-Client port
 					]
 					port
 				]
@@ -1143,6 +1160,7 @@ sys/make-scheme [
 			done?: none
 			requests: 0   ; number of already served requests per connection
 			pending: none ; unprocessed input bytes to restore after a write
+			continued?: none ; `100 Continue` already sent for the current request
 			started: stats/timer
 		]
 		;? port
@@ -1183,7 +1201,7 @@ sys/make-scheme [
 			foreach v ctx/inp [ctx/inp/:v: none]
 			foreach v ctx/out [ctx/out/:v: none]
 			ctx/out/Header: make map! 12
-			ctx/state: none
+			ctx/state: ctx/continued?: none
 			; set new timeout
 			ctx/timeout: now + to time! ctx/config/keep-alive/1 
 			either pending: ctx/pending [
