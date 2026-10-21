@@ -180,6 +180,16 @@ foreach test [
 		did find/match r "HTTP/1.1 413 "
 	] ]
 
+	;; two pipelined requests in one write; both must be answered
+	[ all [
+		binary? r: raw-request ajoin [
+			"GET /plain/ HTTP/1.1^M^/Host: x^M^/^M^/"
+			"GET /ip HTTP/1.1^M^/Host: x^M^/Connection: close^M^/^M^/"
+		]
+		did find r "hello"
+		did find r "127.0.0.1"
+	] ]
+
 	[ print as-green "Stopping the server..." assert-http 200 http://localhost:8081/stop ]
 	;; server must not be reachable anymore
 	[ wait 0.25  error? try [read http://localhost:8081/] ]	

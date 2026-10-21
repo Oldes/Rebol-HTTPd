@@ -870,7 +870,19 @@ sys/make-scheme [
 							either ctx/state = 'read-data [
 								; posted data not fully read
 								read port
-							][	respond port ]
+							][
+								;; `write` replaces port/data, so keep bytes of a pipelined next request
+								if all [ctx/state <> 'error object? inp/header][
+									len: select inp/header 'Content-Length
+									end: case [
+										integer? len        [skip header-end len]
+										inp/method = "POST" [tail header-end] ;; no length: all data is content
+										'else               [header-end]
+									]
+									ctx/pending: unless tail? end [copy end]
+								]
+								respond port
+							]
 						][
 							; request header not yet fully received
 							read port
@@ -1122,7 +1134,14 @@ sys/make-scheme [
 			ctx/state: none
 			; set new timeout
 			ctx/timeout: now + to time! ctx/config/keep-alive/1 
-			read port
+			either pending: ctx/pending [
+				ctx/pending: none
+				port/data: pending
+				either find pending #{0D0A0D0A} [
+					;; complete pipelined request already received
+					Awake-Client make event! [type: 'read port: port]
+				][	read port ]
+			][	read port ]
 		][
 			; close client connection
 			Awake-Client make event! [type: 'CLOSE port: port]
