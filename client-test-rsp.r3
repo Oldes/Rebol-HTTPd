@@ -29,6 +29,9 @@ foreach test [
 	[ "AxB" == read url/test_08.rsp ]
 	[ did find read url/test_09.rsp "RSP include not found" ]
 	[ "Ay2B" == read url/test_10.rsp ]
+	[ 404 == first read/all url/missing.rsp ]
+	;; server's working directory must be intact after the failed request
+	[ 1 == load url/test_01.rsp ]
 ][
 	print-hline
 	print [as-yellow "Assert:" mold/flat test]

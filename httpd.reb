@@ -1063,17 +1063,25 @@ sys/make-scheme [
 		]
 	]
 
-	Process-RSP: func[ctx [object!] /local dir path][
+	Process-RSP: func[ctx [object!] /local dir path res][
 		log-more ["RSP input:^[[1m" mold ctx/inp/target/file]
+		path: ctx/inp/target/file
+		unless exists? path [
+			Actor/On-Not-Found ctx ctx/inp/target
+			exit
+		]
 		dir: what-dir
 		ctx/out/content: make string! 1000
-		path: ctx/inp/target/file
 		change-dir first split-path path
-		rsp-context/process path ctx
+		set/any 'res try [rsp-context/process path ctx]
+		change-dir dir
+		if error? :res [
+			ctx/out/content: none ;; don't send partial output with the 500 response
+			do :res
+		]
 		unless ctx/out/header/Content-Type [
 			ctx/out/header/Content-Type: "text/html; charset=UTF-8"
 		]
-		change-dir dir
 	]
 
 	anti-hacking-rules: [
