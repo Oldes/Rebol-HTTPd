@@ -98,6 +98,28 @@ ws-echo-test: function [
 	result = [#{810161} #{810162}]
 ]
 
+raw-request: function [
+	"Sends raw request data; returns all received data once the server closes the connection"
+	request [binary! string!]
+][
+	result: none
+	conn: open tcp://127.0.0.1:8081
+	conn/awake: func [event /local port][
+		port: event/port
+		switch event/type [
+			lookup  [open port]
+			connect [write port request]
+			wrote   [read port]
+			read    [result: copy port/data read port]
+			close   [return true]
+		]
+		false
+	]
+	wait [conn 5]
+	close conn
+	result
+]
+
 log-start: any [size? %logs/test-errors.log 0]
 
 ;; directory with a file name needing escaping (for listing tests)
@@ -143,6 +165,19 @@ foreach test [
 	[ all [
 		string? s: try [read http://localhost:8081/listing]
 		did find s "a&amp;b #1.txt"
+	] ]
+
+	;; header larger than max-header-size -> 431
+	[ all [
+		binary? r: raw-request ajoin [
+			"GET / HTTP/1.1^M^/X-Big: " append/dup copy "" #"x" 40000 "^M^/^M^/"
+		]
+		did find/match r "HTTP/1.1 431 "
+	] ]
+	;; declared body larger than max-content-length -> 413 without reading the body
+	[ all [
+		binary? r: raw-request "POST / HTTP/1.1^M^/Content-Length: 99999999^M^/^M^/"
+		did find/match r "HTTP/1.1 413 "
 	] ]
 
 	[ print as-green "Stopping the server..." assert-http 200 http://localhost:8081/stop ]

@@ -281,6 +281,8 @@ sys/make-scheme [
 					server-name: "Rebol3-HTTPd"
 					trust-ips:   [127.0.0.1]
 					follow-symlinks?: false
+					max-header-size:    32768    ; bytes, NONE = unlimited
+					max-content-length: 10485760 ; bytes (10MB), NONE = unlimited
 				]
 			]
 			port/state: port/extra/subport/extra/clients
@@ -769,7 +771,7 @@ sys/make-scheme [
 				remote-ip
 				{ - - [} to-CLF-idate now {] "}
 				ctx/inp/method #" "
-				to string! ctx/inp/target/original
+				either ctx/inp/target [to string! ctx/inp/target/original][#"-"]
 				" HTTP/" ctx/inp/version {" }
 				ctx/out/status #" "
 				any [ctx/out/header/Content-Length #"-"]
@@ -812,44 +814,67 @@ sys/make-scheme [
 			switch event/type [
 				READ [
 					log-more ["bytes:^[[1m" length? port/data]
-					either header-end: find/tail port/data CRLF2BIN [
-						try/with [
-							if none? ctx/state [
-								with inp [
-									parse copy/part port/data header-end [
-										copy method some chars-method some space
-										copy target some chars        some space
-										"HTTP/" copy version some chars thru CRLF
-										copy header to end
-										(
-											method:  to string! method
-											target:  decode-target target
-											version: to string! version
-											header:  construct header
-											try [header/Content-Length: to integer! header/Content-Length]
-										)
-									]
-									content: header-end
-								]
-								log-more ["Request header:^[[22m" ctx/inp/method mold ctx/inp/header]
-								; on-header actor may be used for rewrite rules (redirection)
-								actor/on-header ctx
-							]
-							; if status is already defined (probably redirection), respond without reading
-							unless ctx/out/status [actor/on-read port/extra]
-						][
-							log-error system/state/last-error
-							ctx/state: 'error
-							ctx/out/status: 500 ; Internal Server Error
-						]
-						log-debug ["State:^[[1m" ctx/state "^[[22mstatus:^[[1m" out/status]
-						either ctx/state = 'read-data [
-							; posted data not fully read
-							read port
-						][	respond port ]
+					header-end: find/tail port/data CRLF2BIN
+					either all [
+						none? ctx/state ;; still reading the request header
+						limit: ctx/config/max-header-size
+						limit < either header-end [(index? header-end) - 1][length? port/data]
 					][
-						; request header not yet fully received
-						read port
+						log-more ["Request header too large:^[[22m" ctx/remote]
+						inp/version: any [inp/version "1.1"]
+						ctx/state: 'error
+						out/status: 431 ; Request Header Fields Too Large
+						respond port
+					][
+						either header-end [
+							try/with [
+								if none? ctx/state [
+									with inp [
+										parse copy/part port/data header-end [
+											copy method some chars-method some space
+											copy target some chars        some space
+											"HTTP/" copy version some chars thru CRLF
+											copy header to end
+											(
+												method:  to string! method
+												target:  decode-target target
+												version: to string! version
+												header:  construct header
+												try [header/Content-Length: to integer! header/Content-Length]
+											)
+										]
+										content: header-end
+									]
+									log-more ["Request header:^[[22m" ctx/inp/method mold ctx/inp/header]
+									either all [
+										integer? len: select inp/header 'Content-Length
+										limit: ctx/config/max-content-length
+										len > limit
+									][
+										log-more ["Request content too large:^[[22m" len]
+										ctx/state: 'error
+										out/status: 413 ; Payload Too Large
+									][
+										; on-header actor may be used for rewrite rules (redirection)
+										actor/on-header ctx
+									]
+								]
+								; if status is already defined (probably redirection), respond without reading
+								unless ctx/out/status [actor/on-read port/extra]
+							][
+								log-error system/state/last-error
+								ctx/state: 'error
+								ctx/out/status: 500 ; Internal Server Error
+							]
+							log-debug ["State:^[[1m" ctx/state "^[[22mstatus:^[[1m" out/status]
+							either ctx/state = 'read-data [
+								; posted data not fully read
+								read port
+							][	respond port ]
+						][
+							; request header not yet fully received
+							read port
+						]
 					]
 				]
 				WROTE [
@@ -1083,6 +1108,7 @@ sys/make-scheme [
 		either all [
 			keep-alive
 			not ctx/done?  ; server is going to stop, don't keep the connection
+			ctx/state <> 'error ; after 413/431/500 the input stream is unreliable
 			open? port
 			ctx/requests <= keep-alive/2 ; limit to max requests
 			"close" <> select port/extra/inp/Header 'Connection ; client don't want or cannot handle persistent connection
