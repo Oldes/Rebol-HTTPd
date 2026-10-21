@@ -994,14 +994,17 @@ sys/make-scheme [
 	WS-Encode-Frame: function [
 		"Encodes data as a single final, unmasked WebSocket text frame (server -> client)"
 		data [binary! string!]
+		/op "Use given opcode instead of text frame (1)"
+			code [integer!]
 	][
+		hdr:  128 or any [code 1] ;; FIN bit + opcode
 		data: to binary! data
 		len:  length? data
 		bin:  binary len + 10
 		binary/write bin case [
-			len < 126    [[UI8 129 UI8          :len :data]]
-			len <= 65535 [[UI8 129 UI8 126 UI16 :len :data]]
-			'else        [[UI8 129 UI8 127 UI64 :len :data]]
+			len < 126    [[UI8 :hdr UI8          :len :data]]
+			len <= 65535 [[UI8 :hdr UI8 126 UI16 :len :data]]
+			'else        [[UI8 :hdr UI8 127 UI64 :len :data]]
 		]
 		head bin/buffer
 	]
@@ -1019,6 +1022,7 @@ sys/make-scheme [
 		switch event/type [
 			READ [
 				ready?: false
+				replies: make binary! 64
 				data: head port/data
 				log-more ["bytes:^[[1m" length? data]
 				try/with [
@@ -1069,21 +1073,28 @@ sys/make-scheme [
 							Awake-Websocket event
 							exit
 						]
-						ctx/actor/On-Read-Websocket ctx final? opcode
+						case [
+							opcode = 9  [append replies WS-Encode-Frame/op ctx/inp/content 10] ;; ping -> pong
+							opcode = 10 [] ;; unsolicited pong, ignore
+							'else [
+								ctx/actor/On-Read-Websocket ctx final? opcode
+								if all [
+									series? content: ctx/out/content
+									not empty? content
+								][
+									append replies WS-Encode-Frame/op content either binary? content [2][1]
+									clear content
+								]
+							]
+						]
 					]
 				][
 					log-error system/state/last-error
 				]
 				either ready? [
-					;; there was complete input...
 					;; `write` replaces port/data, so keep any unprocessed (partial frame) bytes
 					ctx/pending: head port/data
-					write port either all [
-						series? content: ctx/out/content
-						not empty? content
-					][
-						also WS-Encode-Frame content clear content
-					][	"" ]
+					write port either empty? replies [""][replies]
 				][
 					;; needs more data!
 					read port

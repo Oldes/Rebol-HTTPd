@@ -25,6 +25,8 @@ foreach test [
 	;; above 65535 must use the 64-bit extended length
 	[ #{817F0000000000010000} == copy/part encode payload 65536 10 ]
 	[ 65546 == length? encode payload 65536 ]
+	[ #{8A026869} == encode/op "hi" 10 ]
+	[ #{8200} == encode/op #{} 2 ]
 ][
 	print [as-yellow "Assert:" mold/flat test]
 	either attempt test [print as-green "OK"][++ fails print as-red "FAILED"]

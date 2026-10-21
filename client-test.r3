@@ -98,6 +98,50 @@ ws-echo-test: function [
 	result = [#{810161} #{810162}]
 ]
 
+ws-request: function [
+	"Opens a WebSocket to /echo, sends frames in one write; returns reply bytes"
+	frames [binary!]
+	size   [integer!] "Expected reply size"
+][
+	request: to binary! ajoin [
+		"GET /echo HTTP/1.1^M^/Host: localhost^M^/"
+		"Upgrade: websocket^M^/Connection: Upgrade^M^/"
+		"Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==^M^/"
+		"Sec-WebSocket-Version: 13^M^/^M^/"
+	]
+	result: none
+	stage: 'handshake
+	conn: open tcp://127.0.0.1:8081
+	conn/awake: func [event /local port data][
+		port: event/port
+		switch event/type [
+			lookup  [open port]
+			connect [write port request]
+			wrote   [read port]
+			read [
+				data: port/data
+				either stage = 'handshake [
+					either find data #{0D0A0D0A} [
+						unless find data "101 " [return true] ;; handshake failed
+						stage: 'frames
+						write port frames
+					][	read port ]
+				][
+					either size > length? data [read port][
+						result: copy data
+						return true
+					]
+				]
+			]
+			close [return true]
+		]
+		false
+	]
+	wait [conn 5]
+	close conn
+	result
+]
+
 raw-request: function [
 	"Sends raw request data; returns all received data once the server closes the connection"
 	request [binary! string!]
@@ -154,6 +198,9 @@ foreach test [
 	[ assert-head http://localhost:8081/humans.txt ] ;; actor-generated content
 
 	[ ws-echo-test ]
+
+	;; ping + two text frames in one write: pong first, then both echoes
+	[ #{8A0170810161810162} == ws-request #{898100000000708181000000006181810000000062} 9 ]
 
 	;; listing escapes names in text and encodes them in links
 	[ all [
