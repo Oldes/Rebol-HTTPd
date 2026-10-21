@@ -62,6 +62,32 @@ foreach test [
 
 
 print-hline
+print as-yellow "[TEST] HTTPd Safe-Path"
+safe-path: :system/schemes/httpd/Safe-Path
+;; on Windows %/srv/ would be a UNC path (network lookup), so use a local drive
+root: either system/platform = 'Windows [%/C/srv/www/][%/srv/www/]
+;; result must be NONE or a path inside root without any `..` segment
+inside?: func [p][any [none? p all [find/match p root not find p "/../"]]]
+
+foreach test [
+	[ (join root %a/b.txt) == safe-path root %/a/b.txt ]
+	[ root == safe-path root %/ ]
+	;; `..` is resolved by clean-path (clamped at root) or rejected
+	[ inside? safe-path root %/a/../b ]
+	[ inside? safe-path root %/../etc/passwd ]
+	[ inside? safe-path root %/a/../../etc/passwd ]
+	[ inside? safe-path root %../x ]
+	[ inside? safe-path root select decode-target "/%2e%2e/%2e%2e/etc/passwd" 'file ]
+	;; file literals convert `\` to `/`, so build these from strings
+	[ none? safe-path root as file! "/..\..\windows\win.ini" ]
+	[ none? safe-path root as file! "/a^@b" ]
+][
+	print [as-yellow "Assert:" mold/flat test]
+	either attempt test [print as-green "OK"][++ fails print as-red "FAILED"]
+]
+
+
+print-hline
 if fails > 0 [
 	print as-red [fails "tests have failed!"]
 	quit/return fails

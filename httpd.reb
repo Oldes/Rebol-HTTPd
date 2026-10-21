@@ -310,7 +310,11 @@ sys/make-scheme [
 				Actor/On-Not-Found ctx target
 				exit
 			]
-			target/file: path: join ctx/config/root next clean-path/only target/file
+			unless path: Safe-Path ctx/config/root target/file [
+				Actor/On-Not-Found ctx target
+				exit
+			]
+			target/file: path
 			ctx/out/header/Date: to-idate/gmt now
 			ctx/out/status: 200
 
@@ -368,7 +372,7 @@ sys/make-scheme [
 			true
 		]
 
-		On-Read-Post: func[ctx [object!] /local content header length type temp target][
+		On-Read-Post: func[ctx [object!] /local path content header length type temp target][
 			;@@ TODO: handle `Expect` header: https://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html#sec14.20
 			header: ctx/inp/header
 			length: select header 'Content-Length
@@ -410,11 +414,15 @@ sys/make-scheme [
 					%.rsp == skip tail ctx/inp/target/file -4
 					ctx/config/root
 				][
-					target: ctx/inp/target 
-					target/file: join ctx/config/root next clean-path/only target/file
-					ctx/out/header/Date: to-idate/gmt now
-					ctx/out/status: 200
-					Process-RSP ctx
+					target: ctx/inp/target
+					either path: Safe-Path ctx/config/root target/file [
+						target/file: path
+						ctx/out/header/Date: to-idate/gmt now
+						ctx/out/status: 200
+						Process-RSP ctx
+					][
+						Actor/On-Not-Found ctx target
+					]
 				][
 					Actor/On-Post ctx
 				]
@@ -609,6 +617,27 @@ sys/make-scheme [
 		version [string!] status [integer!]
 	][
 		ajoin ["HTTP/" version #" " status #" " any [status-codes/:status "Unknown"] CRLF]
+	]
+
+	Safe-Path: func [
+		"Joins a request path with root; returns NONE if it could escape the root"
+		root [file!] file [file!]
+		/local p full real
+	][
+		;; backslash is a separator on Windows; NUL truncates paths in the OS layer
+		if any [find file #"\" find file #"^@"] [return none]
+		p: clean-path/only file
+		foreach seg split p #"/" [
+			if ".." == to string! seg [return none]
+		]
+		if #"/" == first p [p: next p]
+		full: join root p
+		;; resolve symlinks; NONE means the file doesn't exist (POSIX) -> let caller 404
+		if real: to-real-file full [
+			if dir? full [real: dirize real] ;; POSIX result has no trailing slash
+			unless find/match real root [return none]
+		]
+		full
 	]
 
 	Respond: function [port [port!]][
