@@ -48,10 +48,13 @@ serve-http [
 		tokens: ["test" (checksum "TEST_TOKEN" 'sha256)]
 		users:  ["oldes" (probe make-password-hash/iterations "secret" 1000)]
 		paths:  [%/private/]
+		lockout: 0:0:2
+		max-failures: 3
 	]
 	trust-ips: [127.0.0.1]
 	header-timeout: 0:0:2
 	body-timeout:   0:0:2
+	
 	;- Server's actor functions                                                                  
 	actor: [
 		On-Accept: func [ctx][

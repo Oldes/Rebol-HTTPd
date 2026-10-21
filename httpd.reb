@@ -410,7 +410,7 @@ sys/make-scheme [
 					if block? auth/users [
 						;; PBKDF2 is slow by design, so verified credentials are cached
 						key: checksum value 'sha256
-						if user: select auth/cache key [return user]
+						if user: auth/cache/:key [return user]
 						all [
 							cred: attempt [to string! debase cred 64]
 							parse cred [copy user: to #":" skip copy pass: to end]
@@ -913,6 +913,55 @@ sys/make-scheme [
 		]
 	]
 
+	Client-IP: func [
+		"Returns client's IP; X-Real-IP is used only when sent by a trusted proxy"
+		ctx [object!]
+		/local ip ips
+	][
+		either all [
+			ip: attempt [to tuple! select ctx/inp/header 'X-Real-IP]
+			4 = length? ip
+			any [none? ips: ctx/config/trust-ips find ips ctx/remote-ip]
+		][ip][ctx/remote-ip]
+	]
+
+	Auth-Blocked?: func [
+		"Returns seconds until the client's lockout ends, or NONE when not locked out"
+		ctx [object!]
+		/local auth f
+	][
+		auth: ctx/config/auth
+		all [
+			integer? auth/max-failures
+			f: auth/failures/(Client-IP ctx)
+			f/1 >= auth/max-failures
+			now < f/2
+			max 1 to integer! difference f/2 now
+		]
+	]
+
+	Auth-Failed: func [
+		"Counts a failed authentication of the client"
+		ctx [object!]
+		/local auth ip f
+	][
+		auth: ctx/config/auth
+		ip: Client-IP ctx
+		if any [none? f: auth/failures/:ip  now >= f/2][
+			if 10000 < length? auth/failures [
+				;; drop expired entries (rebuilt, so no `remove/key` is used)
+				active: make map! 64
+				foreach [key val] auth/failures [
+					if now < val/2 [active/:key: val]
+				]
+				auth/failures: active
+			]
+			auth/failures/:ip: f: reduce [0 now]
+		]
+		f/1: f/1 + 1
+		f/2: now + auth/lockout ;; each failure extends the lockout
+	]
+
 	Auth-Required?: func [
 		"Returns TRUE if the request must be authenticated"
 		ctx [object!] /local auth
@@ -1149,15 +1198,7 @@ sys/make-scheme [
 
 	Write-log: function [ctx][
 		try/with [
-			remote-ip: ctx/remote-ip
-			if all [
-				;; Resolve real IP from the header...
-				ip: attempt [to tuple! ctx/inp/header/X-Real-IP]
-				4 = length? ip
-				;; ...but only if we trust the real IP used to connect
-				any [none? ips: ctx/config/trust-ips find ips remote-ip]
-				remote-ip: :ip
-			]
+			remote-ip: Client-IP ctx
 			;? ctx/inp
 			msg: ajoin [
 				remote-ip
@@ -1264,14 +1305,27 @@ sys/make-scheme [
 										][
 											; on-header actor may be used for rewrite rules (redirection)
 											ctx/actor/on-header ctx
-											if all [
-												none? ctx/out/status
-												Auth-Required? ctx
-												none? ctx/user: ctx/actor/On-Auth ctx
-											][
-												ctx/state: 'error ;; don't keep the connection, a body may follow
-												out/status: 401 ; Unauthorized
-												out/header/WWW-Authenticate: Auth-Challenge ctx/config/auth
+											if all [none? ctx/out/status Auth-Required? ctx][
+												creds: select inp/header 'Authorization
+												case [
+													;; lockout applies only to login attempts, so a browser still gets the 401 challenge
+													all [creds secs: Auth-Blocked? ctx][
+														ctx/state: 'error
+														out/status: 429 ; Too Many Requests
+														out/header/Retry-After: secs
+													]
+													ctx/user: ctx/actor/On-Auth ctx [
+														;; successful login resets the failure counter
+														if f: ctx/config/auth/failures/(Client-IP ctx) [f/1: 0]
+													]
+													'else [
+														;; requests without credentials (browser's first try) are not counted
+														if creds [Auth-Failed ctx]
+														ctx/state: 'error ;; don't keep the connection, a body may follow
+														out/status: 401 ; Unauthorized
+														out/header/WWW-Authenticate: Auth-Challenge ctx/config/auth
+													]
+												]
 											]
 										]
 									]
@@ -1771,8 +1825,11 @@ serve-http: function [
 			users:   none ;= [name pbkdf2-hash ...]
 			methods: [PUT PATCH DELETE]
 			paths:   none ;= [%/private/ ...] all methods require auth there
+			max-failures: 5      ;= failed attempts per IP before lockout, NONE = no limit
+			lockout:      0:5:0  ;= lockout duration (extended by each failure)
 			(config/auth)
-			cache:   make map! 16
+			cache:    make map! 16
+			failures: make map! 16
 		]
 		foreach [name hash] any [config/auth/tokens []][
 			unless binary? hash [cause-error 'script 'invalid-arg reduce [hash]]

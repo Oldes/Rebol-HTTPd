@@ -182,6 +182,7 @@ serve-http [
 * The authenticated name is available in handlers as `ctx/user`.
 * Override `On-Auth` to check credentials your own way. Return the user name, or `none` to refuse.
 * Responses sent directly from `On-Header` are not authenticated.
+* After `max-failures` failed attempts (default 5) from one IP, further login attempts get `429 Too Many Requests` for the `lockout` time (default 5 minutes). Behind a proxy, set `trust-ips` so the real client IP is used.
 
 Credentials are sent in clear text over plain HTTP. Run the server behind an HTTPS proxy (such as nginx), or only on localhost.
 

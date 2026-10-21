@@ -392,7 +392,24 @@ foreach test [
 		"POST / HTTP/1.1^M^/Host: x^M^/Content-Type: text/plain^M^/Content-Length: 5^M^/^M^/he" 3 "llo"
 		"HTTP/1.1 408 "
 	]
+
+
+	;; brute-force throttling: after 3 failures even valid credentials get 429 until lockout ends
+	[ wait 2.5 true ] ;; let earlier failures expire
+	[ assert-http/post 401 http://localhost:8081/upload/a.txt [DELETE [Authorization: "Bearer WRONG1"]] ]
+	[ assert-http/post 401 http://localhost:8081/upload/a.txt [DELETE [Authorization: "Bearer WRONG2"]] ]
+	[ assert-http/post 401 http://localhost:8081/upload/a.txt [DELETE [Authorization: "Bearer WRONG3"]] ]
+	[ all [
+		block? r: write/all http://localhost:8081/upload/a.txt [DELETE [Authorization: "Bearer TEST_TOKEN"]]
+		r/1 = 429
+		select r/2 'Retry-After
+	] ]
+	;; requests without credentials are not counted and still get 401
+	[ assert-http/post 401 http://localhost:8081/upload/a.txt [DELETE []] ]
+	;; after the lockout, valid credentials work again (missing file -> 404)
+	[ wait 2.5 assert-http/post 404 http://localhost:8081/upload/a.txt [DELETE [Authorization: "Bearer TEST_TOKEN"]] ]
 	
+
 	;-- stop --
 	[ print as-green "Stopping the server..." assert-http 200 http://localhost:8081/stop ]
 	;; server must not be reachable anymore
