@@ -821,7 +821,7 @@ sys/make-scheme [
 				any [ctx/out/header/Content-Length #"-"]
 				#"^/"
 			]
-			prin msg
+			if :log-info [prin msg]
 			if port? file: ctx/config/log-access [
 				write/append file msg
 			]
@@ -934,7 +934,6 @@ sys/make-scheme [
 					]
 				]
 				WROTE [
-					event/type: 'CLOSE 
 					either all [
 						out
 						out/content
@@ -1265,7 +1264,6 @@ sys/make-scheme [
 	;=====================================================================
 	log-error: log-info: log-more: log-debug: none
 	set-verbose: func[verbose [integer!]][
-		? verbose
 		log-error: log-info: log-more: log-debug: none
 		case/all [
 			verbose >= 0 [log-error: func[msg][sys/log/error 'HTTPD :msg]]
