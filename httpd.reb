@@ -517,7 +517,7 @@ sys/make-scheme [
 			case [
 				type/2 = "x-www-form-urlencoded" [
 					; using full target decoder, although only values are needed
-					temp: decode-target content
+					temp: decode-target/query content
 					ctx/inp/content: reduce [
 						select temp 'values   ; parsed [key value ...]
 						select temp 'original ; raw data
