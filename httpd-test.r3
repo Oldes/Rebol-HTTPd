@@ -70,6 +70,14 @@ foreach test [
 	[ 4 = length? select decode-target "/p?1=x&b=2" 'values ]
 	[ "f" == select decode-target "/p?a=1#f" 'fragment ]
 	[ "f" == select decode-target "/p#f" 'fragment ]
+	;; `=` and `&` are valid in the path
+	[ %/index.php@board=7.0.html == select decode-target "/index.php@board=7.0.html" 'file ]
+	[ empty? select decode-target "/index.php@board=7.0.html" 'values ]
+	[ %/a&b.txt == select decode-target "/a&b.txt?x=1" 'file ]
+	[ %/a=b == select decode-target "/a=b#f" 'file ]
+	;; form data has no path
+	[ [a: "1" b: "x y"] == select decode-target/query "a=1&b=x+y" 'values ]
+	[ none? select decode-target/query "a=1" 'file ]
 ][
 	print [as-yellow "Assert:" mold/flat test]
 	either attempt test [print as-green "OK"][++ fails print as-red "FAILED"]
@@ -182,6 +190,24 @@ foreach test [
 	[ not pa [%/upload/] %/a.txt ]
 	[ not pa [%/upload/] %/upload/../a.txt ]
 	[ not pa [%/upload/] %/UPLOAD/a.txt ]
+][
+	print [as-yellow "Assert:" mold/flat test]
+	either attempt test [print as-green "OK"][++ fails print as-red "FAILED"]
+]
+
+
+print-hline
+print as-yellow "[TEST] HTTPd auth helpers"
+verify:      :system/schemes/httpd/Verify-Password
+h: make-password-hash/iterations "secret" 1000
+
+foreach test [
+	[ did find/match h "pbkdf2-sha256$1000$" ]
+	[ verify "secret" h ]
+	[ not verify "wrong" h ]
+	[ not verify "secret" "garbage" ]
+	;; salt is random, so two hashes of the same password differ
+	[ h <> make-password-hash/iterations "secret" 1000 ]
 ][
 	print [as-yellow "Assert:" mold/flat test]
 	either attempt test [print as-green "OK"][++ fails print as-red "FAILED"]

@@ -57,26 +57,25 @@ append system/options/log [httpd: 1]
 ;@@ move elsewhere and with different name?
 
 decode-target: wrap [
-	control: charset [#"?" #"&" #"=" #"#"]
-	chars: complement control
-	key-chars: complement charset "&=#"
-	val-chars: complement charset "&#"
+	path-chars: complement charset "?#"
+	key-chars:  complement charset "&=#"
+	val-chars:  complement charset "&#"
 	func [
 		"Splits target into file part and key/pair query values if any"
 		target [file! string! binary! none!]
-		/local key val
+		/query "Target is only a query string (like form-urlencoded data)"
+		/local bin key val
 	][
 		
 		result: object [file: none values: make block! 8 fragment: none original: target]
 		unless target [return result]
-		parse to binary! target [
-			opt [
-				copy val any chars (result/file: val) [
-					  #"?" 
-					| #"#" copy val to end (result/fragment: to string! dehex val)
-					| end
-				] 
-			]
+		bin: to binary! target
+		unless query [
+			;; path ends only at `?` or `#`; `=` and `&` are valid in file names
+			parse bin [copy val any path-chars opt #"?" bin:]
+			result/file: to file! dehex val
+		]
+		parse bin [
 			any [
 				copy key some key-chars [#"=" copy val any val-chars | (val: none)] (
 					key: to string! dehex/uri key
@@ -89,14 +88,7 @@ decode-target: wrap [
 				| #"#" copy val to end (result/fragment: to string! dehex val)
 			]
 		]
-		result/file: to file! dehex either all [
-			none?  result/file
-			empty? result/values
-			none?  result/fragment
-		][
-			target
-		][	any [result/file %""] ]
-		new-line/skip result/values true 2 
+		new-line/skip result/values true 2
 		result
 	]
 ]
